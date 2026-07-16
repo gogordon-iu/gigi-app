@@ -459,7 +459,7 @@ function AppContent({
   handleLogout
 }: AppContentProps) {
   // Tab Navigation State
-  const [activeTab, setActiveTab] = useState<'console' | 'planner' | 'manager'>('console');
+  const [activeTab, setActiveTab] = useState<'console' | 'planner' | 'interaction' | 'manager'>('console');
 
   // Manager Panel States
   const [newUserName, setNewUserName] = useState('');
@@ -844,6 +844,13 @@ function AppContent({
     steps: []
   });
 
+  // Custom Interaction States
+  const [interactionPrompt, setInteractionPrompt] = useState('');
+  const [isGeneratingInteraction, setIsGeneratingInteraction] = useState(false);
+  const [currentInteraction, setCurrentInteraction] = useState<any>(null);
+  const [plannedInteractionFolder, setPlannedInteractionFolder] = useState<string | null>(null);
+  const [isSavingInteraction, setIsSavingInteraction] = useState(false);
+
   // Mode Selection
   const [connectionMode, setConnectionMode] = useState<'bluetooth' | 'tcp' | 'websocket' | 'serial'>(Platform.OS === 'web' ? 'serial' : 'bluetooth');
 
@@ -1037,7 +1044,12 @@ function AppContent({
         type: 'zhennan',
         displayName: p.title
       }));
-      const combined = [...demoList, ...scriptList, ...zhennanScriptList, ...planList];
+      const interactionList: ScriptItem[] = (msg.available_custom_interactions || []).map((p: any) => ({
+        name: p.folder,
+        type: 'zhennan',
+        displayName: `💡 ${p.title}`
+      }));
+      const combined = [...demoList, ...scriptList, ...zhennanScriptList, ...planList, ...interactionList];
       setScripts(combined);
       setIsLoadingScripts(false);
       addLog(`Retrieved ${combined.length} scripts from Gigi.`, 'success');
@@ -1064,10 +1076,17 @@ function AppContent({
         addLog('Gigi status: idle, ready to execute.', 'info');
       }
     } else if (msg.status === 'success' && msg.folder) {
-      setPlannedFolder(msg.folder);
-      setIsSavingPlan(false);
-      addLog(`Plan stored on robot: ${msg.folder}`, 'success');
-      Alert.alert('Success', `Plan saved successfully on robot as:\n${msg.folder}`);
+      if (msg.folder.startsWith('custom_interaction_')) {
+        setPlannedInteractionFolder(msg.folder);
+        setIsSavingInteraction(false);
+        addLog(`Interaction stored on robot: ${msg.folder}`, 'success');
+        Alert.alert('Success', `Interaction saved successfully on robot as:\n${msg.folder}`);
+      } else {
+        setPlannedFolder(msg.folder);
+        setIsSavingPlan(false);
+        addLog(`Plan stored on robot: ${msg.folder}`, 'success');
+        Alert.alert('Success', `Plan saved successfully on robot as:\n${msg.folder}`);
+      }
     } else if (msg.status === 'error') {
       addLog(`Error: ${msg.message}`, 'error');
       setIsLoadingScripts(false);
@@ -1645,6 +1664,303 @@ INSTRUCTIONS:
     sendRawCommand(`RUN ${plannedFolder}`);
   };
 
+  const generateCustomInteraction = async () => {
+    if (!interactionPrompt.trim()) {
+      Alert.alert('Error', 'Please describe the custom interaction first.');
+      return;
+    }
+
+    if (!decryptedApiKey && !(AZURE_OPENAI_CONFIG as any).apiKey) {
+      Alert.alert(
+        'Missing API Key',
+        'Azure OpenAI API key is missing. Please authenticate using the passcode.'
+      );
+      return;
+    }
+
+    setIsGeneratingInteraction(true);
+    addLog(`Initiating LLM custom interaction synthesis for: "${interactionPrompt.substring(0, 40)}..."`, 'info');
+
+    try {
+      const systemPrompt = `You are an expert social robot interaction designer.
+Your goal is to transform a description of a custom robot game or activity into a structured, highly versatile State Machine JSON file.
+The robot (Gigi) has the following capabilities:
+1. Speech: TTS with lip-sync and gestures.
+2. Audition: Speech-to-text input with custom timeouts.
+3. Vision: Face tracking, gaze shifting, and looking for specific gestures (like 'Thumbs Up').
+4. LLM: Dynamic prompt execution, classification, extraction, and generation.
+5. Face Expression/Display: Change facial expression, show image files, or play video files on the robot's face.
+6. Variables & Logic: State-variable initialization, expression evaluation, and conditional state transitions.
+
+OUTPUT FORMAT:
+You must return a strictly valid JSON object with the following structure:
+{
+  "interaction_title": "String (Title of the game/activity)",
+  "variables": {
+    "variable_name": "initial_value"
+  },
+  "states": {
+    "state_name": {
+      "actions": [
+        {
+          "type": "speak",
+          "text": "The exact words the robot speaks. Can interpolate variables using {variable_name}.",
+          "movement": "Optional gesture code (e.g. 'wave_hello', 'clap', 'nod', 'open_arms', 'home')",
+          "expression": "Optional facial expression (e.g. 'smile', 'sad', 'curious')"
+        },
+        {
+          "type": "display",
+          "display_type": "image" or "video" or "expression",
+          "value": "filename (e.g. 'chest.png') or expression_name (e.g. 'smile')"
+        },
+        {
+          "type": "listen",
+          "variable": "Variable name to store the user's spoken input",
+          "timeout": 10
+        },
+        {
+          "type": "vision",
+          "mode": "look_for_gesture" or "look_at_face",
+          "target": "Gesture name (e.g. 'Thumbs Up') or 'face'",
+          "variable": "Variable name to store true/false",
+          "timeout": 8
+        },
+        {
+          "type": "llm",
+          "system_prompt": "Instructions for classification or extraction",
+          "user_prompt": "Prompt to send. Can interpolate variables using {variable_name}.",
+          "variable": "Variable name to store the LLM text output"
+        },
+        {
+          "type": "evaluate",
+          "expression": "Python expression to execute (e.g., 'attempts = attempts + 1')"
+        }
+      ],
+      "transitions": [
+        {
+          "condition": "Python condition to evaluate (e.g., 'parsed_guess == secret_number')",
+          "target": "Next state name to jump to"
+        },
+        {
+          "target": "Default next state (or 'exit' to end the game)"
+        }
+      ]
+    }
+  }
+}
+
+INSTRUCTIONS:
+1. Initialize all game variables (like secret number, attempts, score, state flag) in the 'variables' map.
+2. Structure the game logic cleanly using named states. Common states: 'welcome', 'game_mode', 'ask_question', 'process_response', 'correct', 'incorrect', 'game_over', 'play_again'.
+3. Use the 'llm' action to classify user speech or extract parameters.
+4. Keep the interaction engaging by combining speech, gestures, and facial expressions.
+`;
+
+      const response = await fetch(
+        `${AZURE_OPENAI_CONFIG.endpoint}/openai/deployments/${AZURE_OPENAI_CONFIG.deploymentName}/chat/completions?api-version=${AZURE_OPENAI_CONFIG.apiVersion}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': decryptedApiKey || (AZURE_OPENAI_CONFIG as any).apiKey || '',
+          },
+          body: JSON.stringify({
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: interactionPrompt }
+            ],
+            temperature: 0.2,
+            response_format: { type: "json_object" }
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`LLM HTTP ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      const contentText = result.choices?.[0]?.message?.content;
+      if (!contentText) {
+        throw new Error("No content returned from LLM completion.");
+      }
+
+      const parsedJson = JSON.parse(contentText);
+      setCurrentInteraction(parsedJson);
+      setPlannedInteractionFolder(null); // Reset sync status
+      addLog(`Synthesized dynamic interaction: "${parsedJson.interaction_title}" successfully!`, 'success');
+    } catch (err: any) {
+      addLog(`Synthesis failed: ${err.message}`, 'error');
+      Alert.alert('Synthesis Error', err.message);
+    } finally {
+      setIsGeneratingInteraction(false);
+    }
+  };
+
+  const saveInteractionToRobot = async () => {
+    if (!currentInteraction) {
+      Alert.alert('No Interaction', 'Please generate or load an interaction first.');
+      return;
+    }
+    if (connectionStatus !== 'connected' || !activeConnection.current) {
+      Alert.alert('Offline', 'Please connect to the Gigi robot first.');
+      return;
+    }
+
+    setIsSavingInteraction(true);
+    addLog(`Syncing custom interaction plan: "${currentInteraction.interaction_title || 'untitled'}"...`, 'info');
+
+    const timestampStr = new Date().toISOString().replace(/[-:T]/g, '_').substring(0, 15);
+    const sanitizedTitle = (currentInteraction.interaction_title || 'custom_interaction')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .substring(0, 30);
+    const folderName = `custom_interaction_${timestampStr}_${sanitizedTitle}`;
+
+    const saveCommandObj = {
+      command: "save_custom_interaction",
+      name: folderName,
+      interaction: currentInteraction,
+      images: {}
+    };
+
+    try {
+      const payloadString = JSON.stringify(saveCommandObj);
+      await activeConnection.current.send(payloadString + '\n');
+    } catch (err: any) {
+      addLog(`Transmission failed: ${err.message}`, 'error');
+      Alert.alert('Transmission Error', err.message);
+      setIsSavingInteraction(false);
+    }
+  };
+
+  const renderInteractionPlanner = () => {
+    return (
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Synthesis Prompt Card */}
+        <View style={styles.card}>
+          <View style={[styles.cardHeaderAccent, { backgroundColor: '#5C38FF' }]} />
+          <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>A. Design Custom Interaction</Text>
+          
+          <Text style={styles.inputLabel}>Describe the interaction behavior (states, logic, variables)</Text>
+          <TextInput
+            style={[styles.input, styles.multilineInput]}
+            multiline
+            numberOfLines={5}
+            value={interactionPrompt}
+            onChangeText={setInteractionPrompt}
+            placeholder="e.g. A Mastermind game where Gigi picks a secret 4-digit number and has the student guess it. gigi gives cows and bulls feedback..."
+            placeholderTextColor="#48446B"
+          />
+          
+          {/* Preset templates */}
+          <Text style={styles.exampleHeader}>Preset Templates:</Text>
+          <View style={styles.exampleRow}>
+            {[
+              "Mastermind: A 4-digit secret number guessing game with Gigi",
+              "Math Quest: Gigi asks multiplication questions to unlock a chest",
+              "Receptionist: Gigi greets visitors, asks their name, tracks faces",
+              "Story game: Gigi and user alternate sentences to build a story"
+            ].map((exPrompt) => (
+              <TouchableOpacity
+                key={exPrompt}
+                style={styles.exampleChip}
+                onPress={() => setInteractionPrompt(exPrompt)}
+              >
+                <Text style={styles.exampleChipText} numberOfLines={1}>
+                  💡 {exPrompt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          
+          {isGeneratingInteraction ? (
+            <View style={[styles.connectButton, styles.buttonDisabled]}>
+              <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 10 }} />
+              <Text style={styles.buttonText}>COGNITION IN PROGRESS...</Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.connectButton} onPress={generateCustomInteraction} activeOpacity={0.85}>
+              <Text style={styles.buttonText}>GENERATE CUSTOM INTERACTION</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Generated Interaction JSON / Visual Flow Editor Card */}
+        {currentInteraction && (
+          <View style={styles.card}>
+            <View style={[styles.cardHeaderAccent, { backgroundColor: '#FF8C00' }]} />
+            <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>
+              🛠 Synced: {currentInteraction.interaction_title || 'Untitled'}
+            </Text>
+            
+            <Text style={styles.inputLabel}>State Machine JSON Definition (Edit if needed)</Text>
+            <TextInput
+              style={[styles.input, styles.multilineInput, { minHeight: 250, fontFamily: 'monospace', fontSize: 12, backgroundColor: '#1A1829', color: '#00FF66' }]}
+              multiline
+              value={typeof currentInteraction === 'string' ? currentInteraction : JSON.stringify(currentInteraction, null, 2)}
+              onChangeText={(text) => {
+                try {
+                  const parsed = JSON.parse(text);
+                  setCurrentInteraction(parsed);
+                } catch {
+                  // Allow typing invalid json momentarily, but store as string
+                  setCurrentInteraction(text);
+                }
+              }}
+              placeholder="Valid JSON representation..."
+              placeholderTextColor="#48446B"
+            />
+            
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+              {isSavingInteraction ? (
+                <View style={[styles.connectButton, styles.buttonDisabled, { flex: 1 }]}>
+                  <ActivityIndicator size="small" color="#FFF" />
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={[styles.connectButton, { flex: 1, backgroundColor: '#00D1FF' }]} 
+                  onPress={saveInteractionToRobot}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.buttonText}>📁 SYNC TO ROBOT</Text>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity 
+                style={[
+                  styles.connectButton, 
+                  { flex: 1, backgroundColor: '#00FF66' },
+                  (!plannedInteractionFolder || connectionStatus !== 'connected') && styles.buttonDisabled
+                ]} 
+                onPress={() => {
+                  if (plannedInteractionFolder) {
+                    sendRawCommand(`RUN ${plannedInteractionFolder}`);
+                  }
+                }}
+                disabled={!plannedInteractionFolder || connectionStatus !== 'connected'}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.buttonText}>⚡ RUN INTERACTION</Text>
+              </TouchableOpacity>
+            </View>
+
+            {!plannedInteractionFolder && (
+              <Text style={{ fontSize: 12, color: '#FF8C00', textAlign: 'center', marginTop: 10, fontWeight: '600' }}>
+                ⚠️ Save to robot first before running.
+              </Text>
+            )}
+          </View>
+        )}
+      </ScrollView>
+    );
+  };
+
   const connectToGigi = async () => {
     setConnectionError(null);
     setConnectionStatus('connecting');
@@ -2003,6 +2319,15 @@ INSTRUCTIONS:
         accessibilityRole="tab" focusable={true} accessibilityLabel="Activity Planner tab" accessibilityState={{ selected: activeTab === 'planner' }}>
         <Text style={[styles.tabButtonText, activeTab === 'planner' && styles.tabButtonTextActive]}>
            Lesson Planner
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.tabButton, activeTab === 'interaction' && styles.tabButtonActive]}
+        onPress={() => setActiveTab('interaction')}
+        activeOpacity={0.8}
+        accessibilityRole="tab" focusable={true} accessibilityLabel="Interaction Designer tab" accessibilityState={{ selected: activeTab === 'interaction' }}>
+        <Text style={[styles.tabButtonText, activeTab === 'interaction' && styles.tabButtonTextActive]}>
+           Interaction Designer
         </Text>
       </TouchableOpacity>
       {userRole === 'admin' && (
@@ -2550,6 +2875,8 @@ INSTRUCTIONS:
             </View>
           )}
         </ScrollView>
+      ) : activeTab === 'interaction' ? (
+        renderInteractionPlanner()
       ) : (
         <ScrollView 
           style={styles.scrollView}
