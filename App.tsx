@@ -852,10 +852,15 @@ function AppContent({
   const [isSavingInteraction, setIsSavingInteraction] = useState(false);
 
   // Mode Selection
-  const [connectionMode, setConnectionMode] = useState<'bluetooth' | 'tcp' | 'websocket' | 'serial'>(Platform.OS === 'web' ? 'serial' : 'bluetooth');
+  const isMobileBrowser = Platform.OS === 'web' && typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  const [connectionMode, setConnectionMode] = useState<'bluetooth' | 'tcp' | 'websocket' | 'serial'>(
+    Platform.OS === 'web' 
+      ? (isMobileBrowser ? 'websocket' : 'serial') 
+      : 'bluetooth'
+  );
 
   // TCP Config
-  const [tcpHost, setTcpHost] = useState('127.0.0.1');
+  const [tcpHost, setTcpHost] = useState('192.168.1.100'); // Default to a standard local network IP
   const [tcpPort, setTcpPort] = useState('5006');
   const [wsPort, setWsPort] = useState('5007');
 
@@ -2341,25 +2346,174 @@ INSTRUCTIONS:
         <View style={[styles.cardHeaderAccent, { backgroundColor: '#5C38FF' }]} />
         <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>🔌 Step 1: Connect to Gigi</Text>
 
-        {connectionMode === 'serial' ? (
-          <View style={{ paddingVertical: 8, marginBottom: 16 }}>
-            <Text style={{ color: '#2A2738', fontSize: 16, fontWeight: '700', lineHeight: 22 }}>
+        {/* Mode Selector pills */}
+        <View style={{ flexDirection: 'row', backgroundColor: '#F4F3F8', borderRadius: 12, padding: 3, borderWidth: 1.5, borderColor: '#E2DFF0', marginBottom: 16 }}>
+          {(Platform.OS === 'web' 
+            ? (['serial', 'websocket'] as const) 
+            : (['bluetooth', 'tcp'] as const)
+          ).map((mode) => {
+            const isActive = connectionMode === mode;
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  borderRadius: 10,
+                  backgroundColor: isActive ? '#5E43F3' : 'transparent',
+                }}
+                onPress={() => setConnectionMode(mode)}
+                disabled={connectionStatus !== 'disconnected'}
+                activeOpacity={0.8}
+              >
+                <Text style={{
+                  fontSize: 14,
+                  fontWeight: '700',
+                  color: isActive ? '#FFFFFF' : '#706B8E',
+                }}>
+                  {mode === 'serial' ? '💻 Web Serial' :
+                   mode === 'websocket' ? '📡 WebSocket' :
+                   mode === 'bluetooth' ? '🔵 Bluetooth' :
+                   '🔌 TCP Socket'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Connection descriptions and inputs */}
+        {connectionMode === 'serial' && (
+          <View style={{ paddingVertical: 4, marginBottom: 16 }}>
+            <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
               💻 Direct Bluetooth Connection (Web Serial)
             </Text>
-            <Text style={{ color: '#706B8E', fontSize: 14, marginTop: 6, lineHeight: 20 }}>
+            <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, lineHeight: 18 }}>
               Make sure your Gigi robot is turned on and paired in your computer's Bluetooth settings first.
               Then click Connect below and choose "oranpi5pro" from the browser list.
             </Text>
           </View>
-        ) : (
-          <View style={{ paddingVertical: 8, marginBottom: 16 }}>
-            <Text style={{ color: '#2A2738', fontSize: 16, fontWeight: '700', lineHeight: 22 }}>
-              📱 Direct Bluetooth Connection
+        )}
+
+        {connectionMode === 'websocket' && (
+          <View style={{ paddingVertical: 4, marginBottom: 16 }}>
+            <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
+              📡 Wireless connection (WebSocket over Wi-Fi)
             </Text>
-            <Text style={{ color: '#706B8E', fontSize: 14, marginTop: 6, lineHeight: 20 }}>
+            <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, marginBottom: 12, lineHeight: 18 }}>
+              Connect to your Gigi robot over the local network (Wi-Fi). Enter the robot's IP and WebSocket port:
+            </Text>
+            
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 2 }}>
+                <Text style={styles.inputLabel}>Robot IP Address</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 45 }]}
+                  value={tcpHost}
+                  onChangeText={setTcpHost}
+                  placeholder="e.g. 192.168.1.100"
+                  placeholderTextColor="#8F8AA9"
+                  disabled={connectionStatus !== 'disconnected'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>WS Port</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 45 }]}
+                  value={wsPort}
+                  onChangeText={setWsPort}
+                  placeholder="5007"
+                  placeholderTextColor="#8F8AA9"
+                  keyboardType="numeric"
+                  disabled={connectionStatus !== 'disconnected'}
+                />
+              </View>
+            </View>
+          </View>
+        )}
+
+        {connectionMode === 'bluetooth' && (
+          <View style={{ paddingVertical: 4, marginBottom: 16 }}>
+            <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
+              📱 Direct Bluetooth Connection (Classic)
+            </Text>
+            <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, marginBottom: 12, lineHeight: 18 }}>
               Make sure your Gigi robot is turned on and paired in your phone's Bluetooth settings first.
-              Then click Connect below to automatically search and pair.
             </Text>
+            
+            {connectionStatus === 'disconnected' && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={styles.inputLabel}>Select Gigi Bluetooth Device:</Text>
+                {sortedBtDevices.length > 0 ? (
+                  <View style={{ gap: 8, marginTop: 6 }}>
+                    {sortedBtDevices.map((item) => {
+                      const isSelected = selectedBtDevice?.address === item.address;
+                      return (
+                        <TouchableOpacity
+                          key={item.address}
+                          style={[
+                            styles.deviceItem,
+                            isSelected && styles.deviceItemSelected
+                          ]}
+                          onPress={() => setSelectedBtDevice(item)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.deviceRow}>
+                            <Text style={styles.deviceIcon}>🔵</Text>
+                            <View style={styles.deviceInfoContainer}>
+                              <Text style={styles.deviceName}>{item.name || 'Unnamed Robot'}</Text>
+                              <Text style={styles.deviceAddress}>{item.address}</Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={{ padding: 12, backgroundColor: '#F4F3F8', borderRadius: 10, alignItems: 'center' }}>
+                    <Text style={{ color: '#706B8E', fontSize: 13 }}>No paired Bluetooth devices found.</Text>
+                    <Text style={{ color: '#706B8E', fontSize: 12, marginTop: 4 }}>Make sure Bluetooth is enabled and the device is paired.</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {connectionMode === 'tcp' && (
+          <View style={{ paddingVertical: 4, marginBottom: 16 }}>
+            <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
+              🔌 Direct TCP Socket link
+            </Text>
+            <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, marginBottom: 12, lineHeight: 18 }}>
+              Connect directly via TCP socket over the local network:
+            </Text>
+            
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 2 }}>
+                <Text style={styles.inputLabel}>Robot IP Address</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 45 }]}
+                  value={tcpHost}
+                  onChangeText={setTcpHost}
+                  placeholder="e.g. 192.168.1.100"
+                  placeholderTextColor="#8F8AA9"
+                  disabled={connectionStatus !== 'disconnected'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>TCP Port</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 45 }]}
+                  value={tcpPort}
+                  onChangeText={setTcpPort}
+                  placeholder="5006"
+                  placeholderTextColor="#8F8AA9"
+                  keyboardType="numeric"
+                  disabled={connectionStatus !== 'disconnected'}
+                />
+              </View>
+            </View>
           </View>
         )}
 
