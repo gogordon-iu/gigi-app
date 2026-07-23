@@ -1037,19 +1037,10 @@ function AppContent({
       sendRawCommand('LIST');
     } else if (msg.status === 'list') {
       const demoList: ScriptItem[] = (msg.available_demos || []).map((name: string) => ({ name, type: 'demo' }));
-      const scriptList: ScriptItem[] = (msg.available_scripts || []).map((name: string) => ({ name, type: 'script' }));
-      const zhennanScriptList: ScriptItem[] = (msg.available_zhennan || []).map((name: string) => ({ name, type: 'zhennan' }));
-      const planList: ScriptItem[] = (msg.available_activity_plans || []).map((p: any) => ({
-        name: p.folder,
-        type: 'zhennan',
-        displayName: p.title
-      }));
-      const interactionList: ScriptItem[] = (msg.available_custom_interactions || []).map((p: any) => ({
-        name: p.folder,
-        type: 'zhennan',
-        displayName: `💡 ${p.title}`
-      }));
-      const combined = [...demoList, ...scriptList, ...zhennanScriptList, ...planList, ...interactionList];
+      const scriptList: ScriptItem[] = (msg.available_scripts || [])
+        .filter((name: string) => name.toLowerCase().includes('teacher'))
+        .map((name: string) => ({ name, type: 'script' }));
+      const combined = [...demoList, ...scriptList];
       setScripts(combined);
       setIsLoadingScripts(false);
       addLog(`Retrieved ${combined.length} scripts from Gigi.`, 'success');
@@ -1091,16 +1082,12 @@ function AppContent({
       addLog(`Error: ${msg.message}`, 'error');
       setIsLoadingScripts(false);
       setIsSavingPlan(false);
-      if (msg.available_demos || msg.available_scripts || msg.available_zhennan || msg.available_activity_plans) {
+      if (msg.available_demos || msg.available_scripts) {
         const demoList: ScriptItem[] = (msg.available_demos || []).map((name: string) => ({ name, type: 'demo' }));
-        const scriptList: ScriptItem[] = (msg.available_scripts || []).map((name: string) => ({ name, type: 'script' }));
-        const zhennanScriptList: ScriptItem[] = (msg.available_zhennan || []).map((name: string) => ({ name, type: 'zhennan' }));
-        const planList: ScriptItem[] = (msg.available_activity_plans || []).map((p: any) => ({
-          name: p.folder,
-          type: 'zhennan',
-          displayName: p.title
-        }));
-        setScripts([...demoList, ...scriptList, ...zhennanScriptList, ...planList]);
+        const scriptList: ScriptItem[] = (msg.available_scripts || [])
+          .filter((name: string) => name.toLowerCase().includes('teacher'))
+          .map((name: string) => ({ name, type: 'script' }));
+        setScripts([...demoList, ...scriptList]);
       }
     } else {
       addLog(JSON.stringify(msg), 'info');
@@ -2398,6 +2385,120 @@ INSTRUCTIONS:
           </View>
         )}
       </View>
+
+      {/* Step 2: Select & Run Activity Card */}
+      {connectionStatus === 'connected' && (
+        <View style={styles.card}>
+          <View style={[styles.cardHeaderAccent, { backgroundColor: '#A000FF' }]} />
+          <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>🤖 Step 2: Select & Run Activity</Text>
+          
+          <TouchableOpacity 
+            style={styles.pingButton} 
+            onPress={handlePing} 
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Get refreshed list of activities from Gigi robot"
+          >
+            {isLoadingScripts ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color="#5E43F3" />
+                <Text style={styles.pingButtonText}>Retrieving Activities...</Text>
+              </View>
+            ) : (
+              <Text style={styles.pingButtonText}>📡 GET THE FULL LIST OF ACTIVITIES</Text>
+            )}
+          </TouchableOpacity>
+
+          {scripts.length > 0 ? (
+            <>
+              <Text style={[styles.inputLabel, { marginTop: 15 }]}>Available Activities:</Text>
+              
+              {/* Category Selector/Tabs */}
+              <View style={{ flexDirection: 'row', backgroundColor: '#F4F3F8', borderRadius: 10, padding: 3, borderWidth: 1.5, borderColor: '#E2DFF0', marginVertical: 10 }}>
+                {(['demo', 'script'] as const).map((cat) => {
+                  const isActive = selectedCategory === cat;
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, backgroundColor: isActive ? '#FFFFFF' : 'transparent' }}
+                      onPress={() => setSelectedCategory(cat)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: isActive ? '#5E43F3' : '#4E4B66' }}>
+                        {cat === 'demo' ? '📁 Demo Folder' : '🎓 Teacher Scripts'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Scrollable list of script chips */}
+              <View style={styles.scriptListContainer}>
+                {scripts
+                  .filter((s) => s.type === selectedCategory)
+                  .map((s) => {
+                    const isSelected = selectedScript === s.name;
+                    return (
+                      <TouchableOpacity
+                        key={s.name}
+                        style={[styles.scriptChip, isSelected && styles.scriptChipSelected]}
+                        onPress={() => setSelectedScript(s.name)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.scriptChipText, isSelected && styles.scriptChipTextSelected]}>
+                          {s.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </View>
+
+              {/* Execution Control Row */}
+              <View style={styles.actionsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.runButton,
+                    (!selectedScript || isRunning) && styles.buttonDisabled
+                  ]}
+                  disabled={!selectedScript || isRunning}
+                  onPress={handleRunScript}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.buttonText}>🚀 RUN ACTIVITY</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.stopButton,
+                    !isRunning && styles.buttonDisabled
+                  ]}
+                  disabled={!isRunning}
+                  onPress={handleStopScript}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.buttonText}>🛑 STOP</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            !isLoadingScripts && (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No activities loaded yet.</Text>
+                <Text style={styles.emptySubText}>Click the button above to load activities from the Gigi robot.</Text>
+              </View>
+            )
+          )}
+
+          {/* Running Status Badge */}
+          {isRunning && runningScriptInfo && (
+            <View style={styles.runningBadge}>
+              <Text style={styles.runningText}>
+                ⚡ Running: {runningScriptInfo.name} (PID: {runningScriptInfo.pid})
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Real-time holographic console */}          <View style={styles.card}>            <View style={[styles.cardHeaderAccent, { backgroundColor: '#00FF66' }]} />                        <Text style={styles.cardSectionTitle}>💬 Robot Activity & Chat Stream</Text>            {/* Holographic Toolbar for filters and controls */}            <View style={styles.consoleToolbar}>              <View style={styles.filterContainer}>                <TouchableOpacity                  style={[styles.filterChip, logFilter === 'all' && styles.filterChipActive]}                  onPress={() => setLogFilter('all')}                  activeOpacity={0.7}                >                  <Text style={[styles.filterChipText, logFilter === 'all' && styles.filterChipTextActive]}>ALL</Text>                </TouchableOpacity>                <TouchableOpacity                  style={[styles.filterChip, logFilter === 'info' && styles.filterChipActive]}                  onPress={() => setLogFilter('info')}                  activeOpacity={0.7}                >                  <Text style={[styles.filterChipText, logFilter === 'info' && styles.filterChipTextActive]}>INFO</Text>                </TouchableOpacity>                <TouchableOpacity                  style={[styles.filterChip, logFilter === 'output' && styles.filterChipActive]}                  onPress={() => setLogFilter('output')}                  activeOpacity={0.7}                >                  <Text style={[styles.filterChipText, logFilter === 'output' && styles.filterChipTextActive]}>OUT</Text>                </TouchableOpacity>                <TouchableOpacity                  style={[styles.filterChip, logFilter === 'error' && styles.filterChipActive]}                  onPress={() => setLogFilter('error')}                  activeOpacity={0.7}                >                  <Text style={[styles.filterChipText, logFilter === 'error' && styles.filterChipTextActive]}>ERR</Text>                </TouchableOpacity>              </View>              <TouchableOpacity onPress={handleClearLogs} activeOpacity={0.7} style={styles.flushButton}>                <Text style={styles.clearText}>🧹 FLUSH</Text>              </TouchableOpacity>            </View>            <View style={styles.consoleContainer}>              <ScrollView                ref={logsScrollViewRef}                style={styles.consoleScrollView}                nestedScrollEnabled={true}                showsVerticalScrollIndicator={true}              >                {filteredLogs.length > 0 ? (                  filteredLogs.map((log) => {                    let textStyle = styles.logText;                    let icon = '⚙';                    if (log.type === 'success') {                      textStyle = styles.logSuccess;                      icon = '🟢';                    } else if (log.type === 'error') {                      textStyle = styles.logError;                      icon = '🔴';                    } else if (log.type === 'raw') {                      textStyle = styles.logRaw;                      icon = '⚡';                    } else if (log.type === 'info') {                      textStyle = styles.logInfo;                      icon = '📡';                    }                    return (                      <Text key={log.id} style={textStyle}>                        {icon} [{log.timestamp}] {log.text}                      </Text>                    );                  })                ) : (                  <View style={styles.consoleEmptyContainer}>                    <Text style={styles.consolePlaceholder}>🤖 Gigi is ready!</Text>                    <Text style={styles.consoleSubPlaceholder}>Waiting for your command...</Text>                  </View>                )}              </ScrollView>            </View>          </View>        </ScrollView>      ) : activeTab === 'planner' ? (        <ScrollView           style={styles.scrollView}          contentContainerStyle={styles.scrollContent}           showsVerticalScrollIndicator={false}        >          {/* Generation prompt card */}          <View style={styles.card}>            <View style={[styles.cardHeaderAccent, { backgroundColor: '#5C38FF' }]} />            <Text style={styles.cardSectionTitle}>A. Synthesize New Activity</Text>                        <Text style={styles.inputLabel}>Describe your activity goal</Text>            <TextInput              style={[styles.input, styles.multilineInput]}              multiline              numberOfLines={4}              value={activityPrompt}              onChangeText={setActivityPrompt}              placeholder="e.g. 10 min 'design a habitat on mars' activity for five 3rd graders..."              placeholderTextColor="#48446B"            />            {/* Clickable prompt examples */}            <Text style={styles.exampleHeader}>Preset Templates:</Text>            <View style={styles.exampleRow}>              {[                "10 min 'design a habitat on mars' activity for 3rd graders",                "15 min math multiplication quest for 5th graders",                "5 min bilingual storytelling activity for preschool kids"              ].map((exPrompt) => (                <TouchableOpacity                  key={exPrompt}                  style={styles.exampleChip}                  onPress={() => setActivityPrompt(exPrompt)}                >                  <Text style={styles.exampleChipText} numberOfLines={1}>                    💡 {exPrompt}                  </Text>                </TouchableOpacity>              ))}            </View>            {isGeneratingPlan ? (              <View style={[styles.connectButton, styles.buttonDisabled]}>                <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 10 }} />                <Text style={styles.buttonText}>LLM COGNITION IN PROGRESS...</Text>              </View>            ) : (              <TouchableOpacity style={styles.connectButton} onPress={generateActivityPlan} activeOpacity={0.85}>                <Text style={styles.buttonText}>GENERATE ACTIVITY PLAN</Text>              </TouchableOpacity>            )}          </View>
 
