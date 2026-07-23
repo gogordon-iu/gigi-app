@@ -1981,6 +1981,11 @@ INSTRUCTIONS:
         const port = await (navigator as any).serial.requestPort();
         addLog("Opening Serial port at 115200 baud...", "info");
         await port.open({ baudRate: 115200 });
+        try {
+          await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+        } catch (sigErr) {
+          console.warn("Failed to set serial control signals:", sigErr);
+        }
         setConnectionStatus('connected');
         addLog('Web Serial connection established successfully!', 'success');
         setIsLoadingScripts(true);
