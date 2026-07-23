@@ -869,6 +869,7 @@ function AppContent({
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const activeConnection = useRef<any>(null);
   const btSubscription = useRef<any>(null);
+  const handshakeTimeoutRef = useRef<any>(null);
 
   // Script Runner State
   const [scripts, setScripts] = useState<ScriptItem[]>([]);
@@ -1032,6 +1033,10 @@ function AppContent({
 
   const processServerMessage = (msg: any) => {
     if (msg.status === 'ready') {
+      if (handshakeTimeoutRef.current) {
+        clearTimeout(handshakeTimeoutRef.current);
+        handshakeTimeoutRef.current = null;
+      }
       addLog(`Handshake completed successfully!`, 'success');
       setIsLoadingScripts(true);
       sendRawCommand('LIST');
@@ -2036,6 +2041,13 @@ INSTRUCTIONS:
           }
         };
 
+        if (handshakeTimeoutRef.current) clearTimeout(handshakeTimeoutRef.current);
+        handshakeTimeoutRef.current = setTimeout(() => {
+          addLog("Handshake timeout: No response from Gigi. Disconnecting...", "error");
+          setConnectionError("Handshake timeout. Verify robot is on, bt_listener.py is running, and Bluetooth is connected.");
+          disconnectFromGigi();
+        }, 6000);
+
         setTimeout(() => {
           sendRawCommand('LIST');
         }, 800);
@@ -2184,6 +2196,10 @@ INSTRUCTIONS:
   };
 
   const disconnectFromGigi = () => {
+    if (handshakeTimeoutRef.current) {
+      clearTimeout(handshakeTimeoutRef.current);
+      handshakeTimeoutRef.current = null;
+    }
     if (activeConnection.current) {
       activeConnection.current.disconnect();
       activeConnection.current = null;
