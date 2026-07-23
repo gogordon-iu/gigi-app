@@ -1037,13 +1037,20 @@ function AppContent({
       sendRawCommand('LIST');
     } else if (msg.status === 'list') {
       const demoList: ScriptItem[] = (msg.available_demos || []).map((name: string) => ({ name, type: 'demo' }));
-      const scriptList: ScriptItem[] = (msg.available_scripts || [])
-        .filter((name: string) => name.toLowerCase().includes('teacher'))
-        .map((name: string) => ({ name, type: 'script' }));
-      const combined = [...demoList, ...scriptList];
+      const planList: ScriptItem[] = (msg.available_activity_plans || []).map((item: any) => ({
+        name: item.folder,
+        displayName: item.title || item.folder,
+        type: 'script'
+      }));
+      const interactionList: ScriptItem[] = (msg.available_custom_interactions || []).map((item: any) => ({
+        name: item.folder,
+        displayName: item.title || item.folder,
+        type: 'script'
+      }));
+      const combined = [...demoList, ...planList, ...interactionList];
       setScripts(combined);
       setIsLoadingScripts(false);
-      addLog(`Retrieved ${combined.length} scripts from Gigi.`, 'success');
+      addLog(`Retrieved ${combined.length} activities from Gigi.`, 'success');
     } else if (msg.status === 'starting') {
       setIsRunning(true);
       setRunningScriptInfo({ name: msg.name, type: msg.type, pid: msg.pid });
@@ -1082,12 +1089,19 @@ function AppContent({
       addLog(`Error: ${msg.message}`, 'error');
       setIsLoadingScripts(false);
       setIsSavingPlan(false);
-      if (msg.available_demos || msg.available_scripts) {
+      if (msg.available_demos || msg.available_activity_plans || msg.available_custom_interactions) {
         const demoList: ScriptItem[] = (msg.available_demos || []).map((name: string) => ({ name, type: 'demo' }));
-        const scriptList: ScriptItem[] = (msg.available_scripts || [])
-          .filter((name: string) => name.toLowerCase().includes('teacher'))
-          .map((name: string) => ({ name, type: 'script' }));
-        setScripts([...demoList, ...scriptList]);
+        const planList: ScriptItem[] = (msg.available_activity_plans || []).map((item: any) => ({
+          name: item.folder,
+          displayName: item.title || item.folder,
+          type: 'script'
+        }));
+        const interactionList: ScriptItem[] = (msg.available_custom_interactions || []).map((item: any) => ({
+          name: item.folder,
+          displayName: item.title || item.folder,
+          type: 'script'
+        }));
+        setScripts([...demoList, ...planList, ...interactionList]);
       }
     } else {
       addLog(JSON.stringify(msg), 'info');
@@ -2485,7 +2499,7 @@ INSTRUCTIONS:
                             activeOpacity={0.8}
                           >
                             <Text style={{ fontSize: 13, fontWeight: '700', color: isActive ? '#5E43F3' : '#4E4B66' }}>
-                              {cat === 'demo' ? '📁 Demo Folder' : '🎓 Teacher Scripts'}
+                              {cat === 'demo' ? '📁 Demo Folder' : '✨ Custom Activities'}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -2506,7 +2520,7 @@ INSTRUCTIONS:
                               activeOpacity={0.7}
                             >
                               <Text style={[styles.scriptChipText, isSelected && styles.scriptChipTextSelected]}>
-                                {s.name}
+                                {s.displayName || s.name}
                               </Text>
                             </TouchableOpacity>
                           );
