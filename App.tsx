@@ -852,12 +852,7 @@ function AppContent({
   const [isSavingInteraction, setIsSavingInteraction] = useState(false);
 
   // Mode Selection
-  const isMobileBrowser = Platform.OS === 'web' && typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-  const [connectionMode, setConnectionMode] = useState<'bluetooth' | 'tcp' | 'websocket' | 'serial'>(
-    Platform.OS === 'web' 
-      ? (isMobileBrowser ? 'websocket' : 'serial') 
-      : 'bluetooth'
-  );
+  const [connectionMode, setConnectionMode] = useState<'bluetooth' | 'tcp' | 'websocket' | 'serial'>(Platform.OS === 'web' ? 'serial' : 'bluetooth');
 
   // TCP Config
   const [tcpHost, setTcpHost] = useState('192.168.1.100'); // Default to a standard local network IP
@@ -2370,7 +2365,8 @@ INSTRUCTIONS:
         <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>🔌 Step 1: Connect to Gigi</Text>
 
         {/* Connection descriptions and inputs */}
-        {connectionMode === 'serial' && (
+        {/* Connection descriptions and inputs */}
+        {connectionMode === 'serial' ? (
           <View style={{ paddingVertical: 4, marginBottom: 16 }}>
             <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
               💻 Direct Bluetooth Connection (Web Serial)
@@ -2380,46 +2376,7 @@ INSTRUCTIONS:
               Then click Connect below and choose "oranpi5pro" from the browser list.
             </Text>
           </View>
-        )}
-
-        {connectionMode === 'websocket' && (
-          <View style={{ paddingVertical: 4, marginBottom: 16 }}>
-            <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
-              📡 Wireless Connection (WebSocket over Wi-Fi)
-            </Text>
-            <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, marginBottom: 12, lineHeight: 18 }}>
-              Direct Bluetooth (Web Serial) is not supported in mobile browsers. Please enter your Gigi robot's IP and WebSocket port to connect over Wi-Fi:
-            </Text>
-            
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 2 }}>
-                <Text style={styles.inputLabel}>Robot IP Address</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 45 }]}
-                  value={tcpHost}
-                  onChangeText={setTcpHost}
-                  placeholder="e.g. 192.168.1.100"
-                  placeholderTextColor="#8F8AA9"
-                  disabled={connectionStatus !== 'disconnected'}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>WS Port</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 45 }]}
-                  value={wsPort}
-                  onChangeText={setWsPort}
-                  placeholder="5007"
-                  placeholderTextColor="#8F8AA9"
-                  keyboardType="numeric"
-                  disabled={connectionStatus !== 'disconnected'}
-                />
-              </View>
-            </View>
-          </View>
-        )}
-
-        {connectionMode === 'bluetooth' && (
+        ) : (
           <View style={{ paddingVertical: 4, marginBottom: 16 }}>
             <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
               📱 Direct Bluetooth Connection (Classic)
