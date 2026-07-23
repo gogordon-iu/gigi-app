@@ -460,6 +460,7 @@ function AppContent({
 }: AppContentProps) {
   // Tab Navigation State
   const [activeTab, setActiveTab] = useState<'console' | 'activities' | 'planner' | 'interaction' | 'manager'>('console');
+  const isMobileBrowser = Platform.OS === 'web' && typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
   // Manager Panel States
   const [newUserName, setNewUserName] = useState('');
@@ -2387,16 +2388,29 @@ INSTRUCTIONS:
         <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>🔌 Step 1: Connect to Gigi</Text>
 
         {/* Connection descriptions and inputs */}
-        {/* Connection descriptions and inputs */}
         {connectionMode === 'serial' ? (
           <View style={{ paddingVertical: 4, marginBottom: 16 }}>
             <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
               💻 Direct Bluetooth Connection (Web Serial)
             </Text>
-            <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, lineHeight: 18 }}>
-              Make sure your Gigi robot is turned on and paired in your computer's Bluetooth settings first.
-              Then click Connect below and choose "oranpi5pro" from the browser list.
-            </Text>
+            {isMobileBrowser ? (
+              <View style={{ marginTop: 8, padding: 12, backgroundColor: '#FFF5E6', borderRadius: 10, borderWidth: 1.5, borderColor: '#FFE0B2', gap: 6 }}>
+                <Text style={{ color: '#FF8C00', fontSize: 13, fontWeight: '700' }}>
+                  ⚠️ Mobile Browser Limitation
+                </Text>
+                <Text style={{ color: '#2A2738', fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
+                  Mobile web browsers (like Chrome on Android) do not support Bluetooth Classic (RFCOMM) serial links.
+                </Text>
+                <Text style={{ color: '#706B8E', fontSize: 11, lineHeight: 16 }}>
+                  To connect Gigi to your phone via Bluetooth, please launch the native **Gigi Mobile App** (via Expo or native APK) rather than this webpage!
+                </Text>
+              </View>
+            ) : (
+              <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, lineHeight: 18 }}>
+                Make sure your Gigi robot is turned on and paired in your computer's Bluetooth settings first.
+                Then click Connect below and choose "oranpi5pro" from the browser list.
+              </Text>
+            )}
           </View>
         ) : (
           <View style={{ paddingVertical: 4, marginBottom: 16 }}>
