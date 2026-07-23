@@ -852,12 +852,7 @@ function AppContent({
   const [isSavingInteraction, setIsSavingInteraction] = useState(false);
 
   // Mode Selection
-  const isMobileBrowser = Platform.OS === 'web' && typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-  const [connectionMode, setConnectionMode] = useState<'bluetooth' | 'tcp' | 'websocket' | 'serial'>(
-    Platform.OS === 'web' 
-      ? (isMobileBrowser ? 'websocket' : 'serial') 
-      : 'bluetooth'
-  );
+  const [connectionMode, setConnectionMode] = useState<'bluetooth' | 'tcp' | 'websocket' | 'serial'>(Platform.OS === 'web' ? 'serial' : 'bluetooth');
 
   // TCP Config
   const [tcpHost, setTcpHost] = useState('192.168.1.100'); // Default to a standard local network IP
@@ -2350,49 +2345,13 @@ INSTRUCTIONS:
           contentContainerStyle={styles.scrollContent} 
           showsVerticalScrollIndicator={false}
         >
-          {/* Segmented Control Mode Card */}
+      {/* Connection Card */}
       <View style={styles.card}>
         <View style={[styles.cardHeaderAccent, { backgroundColor: '#5C38FF' }]} />
         <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>🔌 Step 1: Connect to Gigi</Text>
 
-        {/* Mode Selector pills */}
-        <View style={{ flexDirection: 'row', backgroundColor: '#F4F3F8', borderRadius: 12, padding: 3, borderWidth: 1.5, borderColor: '#E2DFF0', marginBottom: 16 }}>
-          {(Platform.OS === 'web' 
-            ? (['serial', 'websocket'] as const) 
-            : (['bluetooth', 'tcp'] as const)
-          ).map((mode) => {
-            const isActive = connectionMode === mode;
-            return (
-              <TouchableOpacity
-                key={mode}
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  alignItems: 'center',
-                  borderRadius: 10,
-                  backgroundColor: isActive ? '#5E43F3' : 'transparent',
-                }}
-                onPress={() => setConnectionMode(mode)}
-                disabled={connectionStatus !== 'disconnected'}
-                activeOpacity={0.8}
-              >
-                <Text style={{
-                  fontSize: 14,
-                  fontWeight: '700',
-                  color: isActive ? '#FFFFFF' : '#706B8E',
-                }}>
-                  {mode === 'serial' ? '💻 Web Serial' :
-                   mode === 'websocket' ? '📡 WebSocket' :
-                   mode === 'bluetooth' ? '🔵 Bluetooth' :
-                   '🔌 TCP Socket'}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         {/* Connection descriptions and inputs */}
-        {connectionMode === 'serial' && (
+        {connectionMode === 'serial' ? (
           <View style={{ paddingVertical: 4, marginBottom: 16 }}>
             <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
               💻 Direct Bluetooth Connection (Web Serial)
@@ -2402,46 +2361,7 @@ INSTRUCTIONS:
               Then click Connect below and choose "oranpi5pro" from the browser list.
             </Text>
           </View>
-        )}
-
-        {connectionMode === 'websocket' && (
-          <View style={{ paddingVertical: 4, marginBottom: 16 }}>
-            <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
-              📡 Wireless connection (WebSocket over Wi-Fi)
-            </Text>
-            <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, marginBottom: 12, lineHeight: 18 }}>
-              Connect to your Gigi robot over the local network (Wi-Fi). Enter the robot's IP and WebSocket port:
-            </Text>
-            
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 2 }}>
-                <Text style={styles.inputLabel}>Robot IP Address</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 45 }]}
-                  value={tcpHost}
-                  onChangeText={setTcpHost}
-                  placeholder="e.g. 192.168.1.100"
-                  placeholderTextColor="#8F8AA9"
-                  disabled={connectionStatus !== 'disconnected'}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>WS Port</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 45 }]}
-                  value={wsPort}
-                  onChangeText={setWsPort}
-                  placeholder="5007"
-                  placeholderTextColor="#8F8AA9"
-                  keyboardType="numeric"
-                  disabled={connectionStatus !== 'disconnected'}
-                />
-              </View>
-            </View>
-          </View>
-        )}
-
-        {connectionMode === 'bluetooth' && (
+        ) : (
           <View style={{ paddingVertical: 4, marginBottom: 16 }}>
             <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
               📱 Direct Bluetooth Connection (Classic)
@@ -2486,43 +2406,6 @@ INSTRUCTIONS:
                 )}
               </View>
             )}
-          </View>
-        )}
-
-        {connectionMode === 'tcp' && (
-          <View style={{ paddingVertical: 4, marginBottom: 16 }}>
-            <Text style={{ color: '#2A2738', fontSize: 15, fontWeight: '700', lineHeight: 20 }}>
-              🔌 Direct TCP Socket link
-            </Text>
-            <Text style={{ color: '#706B8E', fontSize: 13, marginTop: 4, marginBottom: 12, lineHeight: 18 }}>
-              Connect directly via TCP socket over the local network:
-            </Text>
-            
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 2 }}>
-                <Text style={styles.inputLabel}>Robot IP Address</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 45 }]}
-                  value={tcpHost}
-                  onChangeText={setTcpHost}
-                  placeholder="e.g. 192.168.1.100"
-                  placeholderTextColor="#8F8AA9"
-                  disabled={connectionStatus !== 'disconnected'}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>TCP Port</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 45 }]}
-                  value={tcpPort}
-                  onChangeText={setTcpPort}
-                  placeholder="5006"
-                  placeholderTextColor="#8F8AA9"
-                  keyboardType="numeric"
-                  disabled={connectionStatus !== 'disconnected'}
-                />
-              </View>
-            </View>
           </View>
         )}
 
