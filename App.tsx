@@ -2220,7 +2220,7 @@ INSTRUCTIONS:
   };
 
   const handleStopScript = () => {
-    sendRawCommand('🛑 Emergency Stop');
+    sendRawCommand('STOP');
   };
 
   const handleClearLogs = () => {
