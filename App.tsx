@@ -1981,18 +1981,18 @@ INSTRUCTIONS:
         const port = await (navigator as any).serial.requestPort();
         addLog("Opening Serial port at 115200 baud...", "info");
         await port.open({ baudRate: 115200 });
+        const reader = port.readable.getReader();
+        const decoder = new TextDecoder();
+
         try {
           await port.setSignals({ dataTerminalReady: true, requestToSend: true });
         } catch (sigErr) {
           console.warn("Failed to set serial control signals:", sigErr);
         }
+
         setConnectionStatus('connected');
         addLog('Web Serial connection established successfully!', 'success');
         setIsLoadingScripts(true);
-
-        const textDecoder = new TextDecoderStream();
-        const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-        const reader = textDecoder.readable.getReader();
 
         // Read loop in background
         (async () => {
@@ -2002,7 +2002,8 @@ INSTRUCTIONS:
               const { value, done } = await reader.read();
               if (done) break;
               if (value) {
-                buffer += value;
+                const chunk = decoder.decode(value);
+                buffer += chunk;
                 while (buffer.includes("\n") || buffer.includes("\r")) {
                   const idxN = buffer.indexOf("\n");
                   const idxR = buffer.indexOf("\r");
@@ -2023,7 +2024,9 @@ INSTRUCTIONS:
             addLog(`Serial read error: ${e.message}`, 'error');
             disconnectFromGigi();
           } finally {
-            reader.releaseLock();
+            try {
+              reader.releaseLock();
+            } catch (err) {}
           }
         })();
 
@@ -2037,7 +2040,9 @@ INSTRUCTIONS:
           disconnect: async () => {
             try {
               await reader.cancel();
-              await readableStreamClosed.catch(() => {});
+              try {
+                reader.releaseLock();
+              } catch (lockErr) {}
               await port.close();
             } catch (e) {
               console.log("Error closing serial port", e);
