@@ -1993,9 +1993,17 @@ INSTRUCTIONS:
               if (done) break;
               if (value) {
                 buffer += value;
-                while (buffer.includes("\n")) {
-                  const idx = buffer.indexOf("\n");
-                  const line = buffer.substring(0, idx + 1);
+                while (buffer.includes("\n") || buffer.includes("\r")) {
+                  const idxN = buffer.indexOf("\n");
+                  const idxR = buffer.indexOf("\r");
+                  let idx = -1;
+                  if (idxN !== -1 && idxR !== -1) {
+                    idx = Math.min(idxN, idxR);
+                  } else {
+                    idx = idxN !== -1 ? idxN : idxR;
+                  }
+                  
+                  const line = buffer.substring(0, idx);
                   buffer = buffer.substring(idx + 1);
                   handleIncomingData(line);
                 }
