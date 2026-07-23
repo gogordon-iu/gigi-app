@@ -1980,15 +1980,15 @@ INSTRUCTIONS:
         addLog("Requesting Web Serial port access...", "info");
         const port = await (navigator as any).serial.requestPort();
         addLog("Opening Serial port at 115200 baud...", "info");
-        await port.open({ baudRate: 115200 });
-        const reader = port.readable.getReader();
-        const decoder = new TextDecoder();
-
+        await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
         try {
           await port.setSignals({ dataTerminalReady: true, requestToSend: true });
         } catch (sigErr) {
           console.warn("Failed to set serial control signals:", sigErr);
         }
+        
+        const reader = port.readable.getReader();
+        const decoder = new TextDecoder();
 
         setConnectionStatus('connected');
         addLog('Web Serial connection established successfully!', 'success');
@@ -2003,6 +2003,7 @@ INSTRUCTIONS:
               if (done) break;
               if (value) {
                 const chunk = decoder.decode(value);
+                addLog(`[Reader] Received chunk: "${chunk.replace(/\n/g, '\\n').replace(/\r/g, '\\r')}"`, 'info');
                 buffer += chunk;
                 while (buffer.includes("\n") || buffer.includes("\r")) {
                   const idxN = buffer.indexOf("\n");
