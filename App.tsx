@@ -1981,7 +1981,9 @@ INSTRUCTIONS:
           throw new Error("Web Serial API is not supported on this browser. Please use Chrome, Edge, or Opera.");
         }
         addLog("Requesting Web Serial port access...", "info");
-        const port = await (navigator as any).serial.requestPort();
+        const port = await (navigator as any).serial.requestPort({
+          allowedBluetoothServiceClassIds: ["00001101-0000-1000-8000-00805f9b34fb"]
+        });
         addLog("Opening Serial port at 115200 baud...", "info");
         await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
         try {
