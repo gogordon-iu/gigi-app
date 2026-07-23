@@ -1014,7 +1014,9 @@ function AppContent({
 
   // Unify Socket/Serial Data Receiver
   const handleIncomingData = (dataStr: string) => {
-    dataBuffer.current += dataStr;
+    // Normalize carriage returns (\r) to newlines (\n) to handle raw serial/RFCOMM echoes
+    const normalized = dataStr.replace(/\r/g, '\n');
+    dataBuffer.current += normalized;
     while (dataBuffer.current.includes('\n')) {
       const parts = dataBuffer.current.split('\n');
       const line = parts[0].trim();
@@ -1996,7 +1998,6 @@ INSTRUCTIONS:
 
         // Read loop in background
         (async () => {
-          let buffer = "";
           try {
             while (true) {
               const { value, done } = await reader.read();
@@ -2004,21 +2005,7 @@ INSTRUCTIONS:
               if (value) {
                 const chunk = decoder.decode(value);
                 addLog(`[Reader] Received chunk: "${chunk.replace(/\n/g, '\\n').replace(/\r/g, '\\r')}"`, 'info');
-                buffer += chunk;
-                while (buffer.includes("\n") || buffer.includes("\r")) {
-                  const idxN = buffer.indexOf("\n");
-                  const idxR = buffer.indexOf("\r");
-                  let idx = -1;
-                  if (idxN !== -1 && idxR !== -1) {
-                    idx = Math.min(idxN, idxR);
-                  } else {
-                    idx = idxN !== -1 ? idxN : idxR;
-                  }
-                  
-                  const line = buffer.substring(0, idx);
-                  buffer = buffer.substring(idx + 1);
-                  handleIncomingData(line);
-                }
+                handleIncomingData(chunk);
               }
             }
           } catch (e: any) {
