@@ -2394,15 +2394,18 @@ INSTRUCTIONS:
               💻 Direct Bluetooth Connection (Web Serial)
             </Text>
             {isMobileBrowser ? (
-              <View style={{ marginTop: 8, padding: 12, backgroundColor: '#FFF5E6', borderRadius: 10, borderWidth: 1.5, borderColor: '#FFE0B2', gap: 6 }}>
-                <Text style={{ color: '#FF8C00', fontSize: 13, fontWeight: '700' }}>
-                  ⚠️ Mobile Browser Limitation
+              <View style={{ marginTop: 8, padding: 12, backgroundColor: '#F0F9FF', borderRadius: 10, borderWidth: 1.5, borderColor: '#B9E6FE', gap: 6 }}>
+                <Text style={{ color: '#0284C7', fontSize: 13, fontWeight: '700' }}>
+                  📱 Bluetooth Connection on Android
                 </Text>
                 <Text style={{ color: '#2A2738', fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
-                  Mobile web browsers (like Chrome on Android) do not support Bluetooth Classic (RFCOMM) serial links.
+                  Chrome on Android connects to Bluetooth Classic using the Web Serial API:
                 </Text>
-                <Text style={{ color: '#706B8E', fontSize: 11, lineHeight: 16 }}>
-                  To connect Gigi to your phone via Bluetooth, please launch the native **Gigi Mobile App** (via Expo or native APK) rather than this webpage!
+                <Text style={{ color: '#475569', fontSize: 11, lineHeight: 16 }}>
+                  1. Make sure **`orangepi5pro`** is paired in your phone's Android Bluetooth settings first.
+                  {'\n'}2. Click **Connect to Gigi** below.
+                  {'\n'}3. Chrome's device selection prompt will appear (which reads "...wants to connect to a serial port").
+                  {'\n'}4. Select **`orangepi5pro`** from the list to connect via Bluetooth!
                 </Text>
               </View>
             ) : (
