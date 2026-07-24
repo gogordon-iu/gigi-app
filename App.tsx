@@ -593,6 +593,67 @@ function AppContent({
     }
   };
 
+  const exportBackup = () => {
+    try {
+      const backupData = {
+        issuedTokens,
+        blacklist,
+        adminApiKey,
+        exportDate: new Date().toISOString()
+      };
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+        JSON.stringify(backupData, null, 2)
+      )}`;
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', jsonString);
+      downloadAnchor.setAttribute('download', 'gigi_tokens_backup.json');
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      addLog('Backup file downloaded successfully', 'success');
+    } catch (e: any) {
+      Alert.alert('Export Failed', e.message);
+    }
+  };
+
+  const importBackup = () => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Not Supported', 'Backup import is only supported on the web manager panel.');
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event: any) => {
+        try {
+          const backupData = JSON.parse(event.target.result);
+          if (backupData.issuedTokens && Array.isArray(backupData.issuedTokens)) {
+            setIssuedTokens(backupData.issuedTokens);
+            localStorage.setItem('gigi_issued_tokens', JSON.stringify(backupData.issuedTokens));
+          }
+          if (backupData.blacklist && Array.isArray(backupData.blacklist)) {
+            setBlacklist(backupData.blacklist);
+            localStorage.setItem('gigi_blacklist', JSON.stringify(backupData.blacklist));
+          }
+          if (backupData.adminApiKey) {
+            setAdminApiKey(backupData.adminApiKey);
+            localStorage.setItem('gigi_admin_api_key', backupData.adminApiKey);
+          }
+          Alert.alert('Import Success', 'Tokens list and configurations restored successfully!');
+          addLog('Tokens database restored from backup file', 'success');
+        } catch (err: any) {
+          Alert.alert('Import Failed', 'Invalid backup file format: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
   const renderManagerPanel = () => {
     return (
       <View style={{ gap: 18 }}>
@@ -778,6 +839,21 @@ function AppContent({
               No active users generated yet. Issue a token above to get started.
             </Text>
           )}
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, borderTopWidth: 1, borderTopColor: '#ECE9F5', paddingTop: 12 }}>
+            <TouchableOpacity
+              onPress={exportBackup}
+              style={{ flex: 1, backgroundColor: '#F4F3F8', paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#D1CCE6', alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 11, color: '#5E43F3', fontWeight: '700' }}>📤 Export Tokens Backup</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={importBackup}
+              style={{ flex: 1, backgroundColor: '#F4F3F8', paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#D1CCE6', alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 11, color: '#5E43F3', fontWeight: '700' }}>📥 Import Tokens Backup</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Revoke Access Card */}
