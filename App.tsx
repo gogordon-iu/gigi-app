@@ -2122,7 +2122,6 @@ INSTRUCTIONS:
           }
         };
 
-        const isMac = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/i.test(navigator.userAgent);
         if (handshakeTimeoutRef.current) clearTimeout(handshakeTimeoutRef.current);
         handshakeTimeoutRef.current = setTimeout(() => {
           addLog("Handshake timeout: No response from Gigi. Disconnecting...", "error");
