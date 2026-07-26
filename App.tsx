@@ -2062,10 +2062,14 @@ INSTRUCTIONS:
         });
         addLog("Opening Serial port at 115200 baud...", "info");
         await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
-        try {
-          await port.setSignals({ dataTerminalReady: true, requestToSend: true });
-        } catch (sigErr) {
-          console.warn("Failed to set serial control signals:", sigErr);
+        // Skip setting signals on macOS as the OS Bluetooth stack can hang emulating DTR/RTS flow control over RFCOMM
+        const isMac = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/i.test(navigator.userAgent);
+        if (!isMac) {
+          try {
+            await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+          } catch (sigErr) {
+            console.warn("Failed to set serial control signals:", sigErr);
+          }
         }
         
         const reader = port.readable.getReader();
@@ -2118,16 +2122,17 @@ INSTRUCTIONS:
           }
         };
 
+        const isMac = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/i.test(navigator.userAgent);
         if (handshakeTimeoutRef.current) clearTimeout(handshakeTimeoutRef.current);
         handshakeTimeoutRef.current = setTimeout(() => {
           addLog("Handshake timeout: No response from Gigi. Disconnecting...", "error");
           setConnectionError("Handshake timeout. Verify robot is on, bt_listener.py is running, and Bluetooth is connected.");
           disconnectFromGigi();
-        }, 6000);
+        }, isMac ? 9000 : 6000);
 
         setTimeout(() => {
           sendRawCommand('LIST');
-        }, 800);
+        }, isMac ? 2200 : 800);
 
       } catch (e: any) {
         setConnectionStatus('disconnected');
