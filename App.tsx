@@ -2135,8 +2135,12 @@ INSTRUCTIONS:
 
       } catch (e: any) {
         setConnectionStatus('disconnected');
-        setConnectionError(e.message);
-        addLog(`Web Serial link failed: ${e.message}`, 'error');
+        const isCancelled = e.name === 'NotFoundError' || (e.message && e.message.includes('No port selected'));
+        const friendlyError = isCancelled 
+          ? "Connection cancelled: No device was selected." 
+          : e.message;
+        setConnectionError(friendlyError);
+        addLog(`Web Serial link failed: ${friendlyError}`, 'error');
       }
     } else if (connectionMode === 'websocket') {
       try {
