@@ -956,6 +956,7 @@ function AppContent({
   const [customScript, setCustomScript] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [runningScriptInfo, setRunningScriptInfo] = useState<any>(null);
+  const [isRobotCalibrated, setIsRobotCalibrated] = useState<boolean | null>(null);
 
   // Logs
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -1118,8 +1119,12 @@ function AppContent({
       }
       addLog(`Handshake completed successfully!`, 'success');
       setIsLoadingScripts(true);
+      sendRawCommand('STATUS');
       sendRawCommand('LIST');
     } else if (msg.status === 'list') {
+      if (typeof msg.calibrated === 'boolean') {
+        setIsRobotCalibrated(msg.calibrated);
+      }
       const demoList: ScriptItem[] = (msg.available_demos || []).map((name: string) => ({ name, type: 'demo' }));
       const planList: ScriptItem[] = (msg.available_activity_plans || []).map((item: any) => ({
         name: item.folder,
@@ -1147,7 +1152,13 @@ function AppContent({
         `Script "${msg.name}" finished. Return code: ${msg.returncode}.`,
         isFailed ? 'error' : 'success'
       );
+      if (msg.name && (msg.name.includes('calibrate') || msg.name === 'calibrate_motors.py')) {
+        handlePing();
+      }
     } else if (msg.status === 'status') {
+      if (typeof msg.calibrated === 'boolean') {
+        setIsRobotCalibrated(msg.calibrated);
+      }
       if (msg.running) {
         setIsRunning(true);
         setRunningScriptInfo({ name: msg.name, type: msg.type, pid: msg.pid });
@@ -1170,9 +1181,16 @@ function AppContent({
         Alert.alert('Success', `Plan saved successfully on robot as:\n${msg.folder}`);
       }
     } else if (msg.status === 'error') {
-      addLog(`Error: ${msg.message}`, 'error');
+      addLog(`Error: ${msg.message || msg.error}`, 'error');
       setIsLoadingScripts(false);
       setIsSavingPlan(false);
+      if (msg.requires_calibration || msg.error === 'uncalibrated') {
+        setIsRobotCalibrated(false);
+        Alert.alert(
+          'Calibration Required',
+          'The robot motors are uncalibrated! Physical movement is locked out to prevent mechanical damage. Please run the calibration wizard first.'
+        );
+      }
       if (msg.available_demos || msg.available_activity_plans || msg.available_custom_interactions) {
         const demoList: ScriptItem[] = (msg.available_demos || []).map((name: string) => ({ name, type: 'demo' }));
         const planList: ScriptItem[] = (msg.available_activity_plans || []).map((item: any) => ({
@@ -1746,6 +1764,17 @@ INSTRUCTIONS:
       Alert.alert('Not Synced', 'Please save the plan to the robot first.');
       return;
     }
+    if (isRobotCalibrated === false) {
+      Alert.alert(
+        'Calibration Required',
+        'Robot motors are NOT calibrated! For safety and to prevent servo damage, motor movements are locked until calibration is completed.\n\nWould you like to run calibration now?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Calibrate Now', onPress: handleCalibrateMotors }
+        ]
+      );
+      return;
+    }
     sendRawCommand(`RUN ${plannedFolder}`);
   };
 
@@ -2025,6 +2054,17 @@ INSTRUCTIONS:
                 ]} 
                 onPress={() => {
                   if (plannedInteractionFolder) {
+                    if (isRobotCalibrated === false) {
+                      Alert.alert(
+                        'Calibration Required',
+                        'Robot motors are NOT calibrated! For safety and to prevent servo damage, motor movements are locked until calibration is completed.\n\nWould you like to run calibration now?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Calibrate Now', onPress: handleCalibrateMotors }
+                        ]
+                      );
+                      return;
+                    }
                     sendRawCommand(`RUN ${plannedInteractionFolder}`);
                   }
                 }}
@@ -2295,6 +2335,7 @@ INSTRUCTIONS:
     setIsRunning(false);
     setRunningScriptInfo(null);
     setIsLoadingScripts(false);
+    setIsRobotCalibrated(null);
     addLog('Disconnected from Gigi.', 'info');
   };
 
@@ -2314,10 +2355,38 @@ INSTRUCTIONS:
     sendRawCommand('LIST');
   };
 
+  const handleCalibrateMotors = () => {
+    Alert.alert(
+      'Motor Calibration',
+      'Run motor calibration on Gigi? Gigi will test and calibrate servo channels. Please ensure the robot has physical clearance.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start Calibration',
+          onPress: () => {
+            addLog('Requesting motor calibration wizard...', 'info');
+            sendRawCommand('CALIBRATE');
+          },
+        },
+      ]
+    );
+  };
+
   const handleRunScript = () => {
     const scriptToRun = customScript.trim() || selectedScript;
     if (!scriptToRun) {
       Alert.alert('Error', 'Please select a script or write a name manually.');
+      return;
+    }
+    if (isRobotCalibrated === false && scriptToRun !== 'calibrate_motors.py' && scriptToRun !== 'calibrate') {
+      Alert.alert(
+        'Calibration Required',
+        'Robot motors are NOT calibrated! For safety and to prevent mechanical damage to servos, motor movements are locked out until calibration is performed.\n\nWould you like to run calibration now?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Calibrate Now', onPress: handleCalibrateMotors }
+        ]
+      );
       return;
     }
     sendRawCommand(`RUN ${scriptToRun}`);
@@ -2384,31 +2453,53 @@ INSTRUCTIONS:
         <View style={styles.hudTitleContainer}>
           <Text style={styles.hudTitle}>🤖 Gigi Classroom Assistant</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 4 }}><Text style={[styles.hudSubTitle, { marginTop: 0 }]}>Your Interactive Learning Portal</Text>{isAuthenticated ? (<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>{loggedInUser ? (<Text style={{ fontSize: 12, color: '#5E43F3', fontWeight: '700', backgroundColor: '#F3F0FC', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: '#D1CCE6' }}>👤 {loggedInUser}</Text>) : null}<TouchableOpacity onPress={handleLogout} style={{ backgroundColor: '#FFEBEF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#FFCCD6' }} accessibilityRole="button" focusable={true} accessibilityLabel="Log out and clear saved credentials"><Text style={{ color: '#DE350B', fontSize: 11, fontWeight: '700' }}>🚪 Log Out</Text></TouchableOpacity></View>) : null}</View></View>{/* Glowing Status Dot */}
-        <View style={[
-          styles.statusBadge,
-          connectionStatus === 'connected' ? styles.statusBadgeConnected : 
-          connectionStatus === 'connecting' ? styles.statusBadgeConnecting : 
-          styles.statusBadgeDisconnected
-        ]}>
-          <Animated.View 
-            style={[
-              styles.statusDot, 
-              connectionStatus === 'connected' ? styles.statusDotConnected : 
-              connectionStatus === 'connecting' ? styles.statusDotConnecting : 
-              styles.statusDotDisconnected,
-              { opacity: pulseAnim }
-            ]}
-          />
-          <Text style={[
-            styles.statusLabel, 
-            connectionStatus === 'connected' ? styles.statusLabelConnected : 
-            connectionStatus === 'connecting' ? styles.statusLabelConnecting : 
-            styles.statusLabelDisconnected
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={[
+            styles.statusBadge,
+            connectionStatus === 'connected' ? styles.statusBadgeConnected : 
+            connectionStatus === 'connecting' ? styles.statusBadgeConnecting : 
+            styles.statusBadgeDisconnected
           ]}>
-            {connectionStatus === 'connected' ? 'ONLINE' : 
-             connectionStatus === 'connecting' ? 'LINKING' : 
-             'OFFLINE'}
-          </Text>
+            <Animated.View 
+              style={[
+                styles.statusDot, 
+                connectionStatus === 'connected' ? styles.statusDotConnected : 
+                connectionStatus === 'connecting' ? styles.statusDotConnecting : 
+                styles.statusDotDisconnected,
+                { opacity: pulseAnim }
+              ]}
+            />
+            <Text style={[
+              styles.statusLabel, 
+              connectionStatus === 'connected' ? styles.statusLabelConnected : 
+              connectionStatus === 'connecting' ? styles.statusLabelConnecting : 
+              styles.statusLabelDisconnected
+            ]}>
+              {connectionStatus === 'connected' ? 'ONLINE' : 
+               connectionStatus === 'connecting' ? 'LINKING' : 
+               'OFFLINE'}
+            </Text>
+          </View>
+
+          {connectionStatus === 'connected' && (
+            <TouchableOpacity
+              style={[
+                styles.statusBadge,
+                isRobotCalibrated === true ? styles.statusBadgeCalibrated : styles.statusBadgeUncalibrated
+              ]}
+              onPress={isRobotCalibrated === false ? handleCalibrateMotors : undefined}
+              activeOpacity={isRobotCalibrated === false ? 0.7 : 1}
+              accessibilityRole={isRobotCalibrated === false ? "button" : "text"}
+              accessibilityLabel={isRobotCalibrated === true ? "Motors calibrated" : "Motors uncalibrated. Tap to calibrate."}
+            >
+              <Text style={[
+                styles.statusLabel,
+                isRobotCalibrated === true ? styles.statusLabelCalibrated : styles.statusLabelUncalibrated
+              ]}>
+                {isRobotCalibrated === true ? '🟢 CALIBRATED' : isRobotCalibrated === false ? '⚠️ UNCALIBRATED' : '⚪ CHECKING'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
       {/* Tab Navigation */}
@@ -2608,6 +2699,46 @@ INSTRUCTIONS:
                     <Text style={styles.pingButtonText}>📡 GET THE FULL LIST OF ACTIVITIES</Text>
                   )}
                 </TouchableOpacity>
+
+                {/* Motor Calibration Status Banner */}
+                {isRobotCalibrated === false && (
+                  <View style={styles.calibrationCardWarning}>
+                    <View style={styles.calibrationWarningHeader}>
+                      <Text style={{ fontSize: 18 }}>⚠️</Text>
+                      <Text style={styles.calibrationWarningTitle}>Motors Uncalibrated (Movement Locked)</Text>
+                    </View>
+                    <Text style={styles.calibrationWarningText}>
+                      Gigi's physical motors must be calibrated locally before running any activities to ensure correct PWM center points and prevent mechanical damage.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.calibrationCalibrateButton}
+                      onPress={handleCalibrateMotors}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel="Run Motor Calibration Wizard"
+                    >
+                      <Text style={styles.calibrationCalibrateButtonText}>🔧 RUN MOTOR CALIBRATION NOW</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {isRobotCalibrated === true && (
+                  <View style={styles.calibrationCardSuccess}>
+                    <View style={{ flex: 1, marginRight: 12 }}>
+                      <Text style={styles.calibrationSuccessTitle}>🟢 Motors Calibrated & Safe</Text>
+                      <Text style={styles.calibrationSuccessSubText}>All servo ranges and center positions verified.</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.recalibrateButton}
+                      onPress={handleCalibrateMotors}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Recalibrate Motors"
+                    >
+                      <Text style={styles.recalibrateButtonText}>⚙️ Recalibrate</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 {scripts.length > 0 ? (
                   <>
@@ -3281,6 +3412,95 @@ const styles = StyleSheet.create({
   },
   statusLabelDisconnected: {
     color: '#DE350B',
+  },
+  statusBadgeCalibrated: {
+    backgroundColor: '#E3FAF0',
+    borderColor: '#A3EAD0',
+  },
+  statusBadgeUncalibrated: {
+    backgroundColor: '#FFF4E5',
+    borderColor: '#FFD8B3',
+  },
+  statusLabelCalibrated: {
+    color: '#00875A',
+  },
+  statusLabelUncalibrated: {
+    color: '#D97706',
+  },
+  calibrationCardWarning: {
+    backgroundColor: '#FFF4E5',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#FFD8B3',
+    marginVertical: 12,
+  },
+  calibrationCardSuccess: {
+    backgroundColor: '#E3FAF0',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#A3EAD0',
+    marginVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  calibrationWarningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  calibrationWarningTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#D97706',
+  },
+  calibrationWarningText: {
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  calibrationCalibrateButton: {
+    backgroundColor: '#D97706',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  calibrationCalibrateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  calibrationSuccessTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#00875A',
+  },
+  calibrationSuccessSubText: {
+    fontSize: 12,
+    color: '#065F46',
+    marginTop: 2,
+  },
+  recalibrateButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#A3EAD0',
+  },
+  recalibrateButtonText: {
+    color: '#00875A',
+    fontSize: 12,
+    fontWeight: '700',
   },
   scrollContent: {
     paddingHorizontal: 20,
