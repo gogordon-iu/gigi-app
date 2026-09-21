@@ -592,6 +592,10 @@ function AppContent({
   };
 
   const processServerMessage = (msg: any) => {
+    if (typeof msg.calibrated === 'boolean') {
+      setIsRobotCalibrated(msg.calibrated);
+    }
+
     if (msg.status === 'ready') {
       if (handshakeTimeoutRef.current) {
         clearTimeout(handshakeTimeoutRef.current);
@@ -764,6 +768,7 @@ function AppContent({
         }, isMac ? 9000 : 6000);
 
         setTimeout(() => {
+          sendRawCommand('STATUS');
           sendRawCommand('LIST');
         }, isMac ? 2200 : 800);
       } catch (e: any) {
