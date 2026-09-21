@@ -518,6 +518,7 @@ function AppContent({
   const activeConnection = useRef<{ send: (data: string) => Promise<void>; disconnect: () => void } | null>(null);
   const dataBuffer = useRef<string>('');
   const handshakeTimeoutRef = useRef<any>(null);
+  const fallbackQueryRef = useRef<any>(null);
   const btSubscription = useRef<any>(null);
   const logsScrollViewRef = useRef<any>(null);
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
@@ -593,13 +594,22 @@ function AppContent({
 
   const processServerMessage = (msg: any) => {
     if (typeof msg.calibrated === 'boolean') {
-      setIsRobotCalibrated(msg.calibrated);
+      setIsRobotCalibrated((prev) => {
+        if (prev !== msg.calibrated) {
+          addLog(`Gigi motor calibration: ${msg.calibrated ? 'CALIBRATED 🟢' : 'UNCALIBRATED ⚠️'}`, msg.calibrated ? 'success' : 'error');
+        }
+        return msg.calibrated;
+      });
     }
 
     if (msg.status === 'ready') {
       if (handshakeTimeoutRef.current) {
         clearTimeout(handshakeTimeoutRef.current);
         handshakeTimeoutRef.current = null;
+      }
+      if (fallbackQueryRef.current) {
+        clearTimeout(fallbackQueryRef.current);
+        fallbackQueryRef.current = null;
       }
       addLog('Handshake completed successfully!', 'success');
       setIsLoadingScripts(true);
@@ -739,19 +749,40 @@ function AppContent({
           }
         })();
 
+        const writer = port.writable.getWriter();
+        const encoder = new TextEncoder();
+        let writeQueue: Promise<void> = Promise.resolve();
+
         activeConnection.current = {
           send: async (data: string) => {
-            const encoder = new TextEncoder();
-            const writerStream = port.writable.getWriter();
-            await writerStream.write(encoder.encode(data));
-            writerStream.releaseLock();
+            writeQueue = writeQueue.then(async () => {
+              await writer.write(encoder.encode(data));
+            });
+            await writeQueue;
           },
           disconnect: async () => {
+            if (handshakeTimeoutRef.current) {
+              clearTimeout(handshakeTimeoutRef.current);
+              handshakeTimeoutRef.current = null;
+            }
+            if (fallbackQueryRef.current) {
+              clearTimeout(fallbackQueryRef.current);
+              fallbackQueryRef.current = null;
+            }
             try {
               await reader.cancel();
+            } catch (e) {}
+            try {
+              reader.releaseLock();
+            } catch (e) {}
+            try {
+              await writer.close();
+            } catch (e) {
               try {
-                reader.releaseLock();
-              } catch (lockErr) {}
+                writer.releaseLock();
+              } catch (err) {}
+            }
+            try {
               await port.close();
             } catch (e) {
               console.log('Error closing serial port', e);
@@ -767,7 +798,8 @@ function AppContent({
           disconnectFromGigi();
         }, isMac ? 9000 : 6000);
 
-        setTimeout(() => {
+        if (fallbackQueryRef.current) clearTimeout(fallbackQueryRef.current);
+        fallbackQueryRef.current = setTimeout(() => {
           sendRawCommand('STATUS');
           sendRawCommand('LIST');
         }, isMac ? 2200 : 800);
@@ -837,6 +869,10 @@ function AppContent({
     if (handshakeTimeoutRef.current) {
       clearTimeout(handshakeTimeoutRef.current);
       handshakeTimeoutRef.current = null;
+    }
+    if (fallbackQueryRef.current) {
+      clearTimeout(fallbackQueryRef.current);
+      fallbackQueryRef.current = null;
     }
     if (activeConnection.current) {
       activeConnection.current.disconnect();
