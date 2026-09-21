@@ -123,34 +123,68 @@ export function getActivityMetadata(rawName: string): ActivityMetadata {
 
   // Handle lesson plans
   if (clean.startsWith('activity_plan_') || clean.startsWith('plan_')) {
-    const title = clean
+    let title = clean
       .replace(/^activity_plan_/, '')
       .replace(/^plan_/, '')
       .split('_')
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
+    let desc = 'Structured educational activity plan created via the Lesson Planner.';
+    let icon = '📚';
+
+    if (clean.includes('cb76d0') || clean.includes('mars')) {
+      title = 'Design a Habitat on Mars';
+      desc = 'Interactive STEM lesson on Martian environmental challenges and habitat engineering for 3rd graders.';
+      icon = '🪐';
+    } else if (clean.includes('waves_energy') || clean.includes('wave')) {
+      title = 'Waves & Energy Science';
+      desc = '5th-grade physics lesson exploring sound, light, and wave motion with visual diagrams.';
+      icon = '🌊';
+    } else if (clean.includes('aiethics') || clean.includes('ai_ethics') || clean.includes('ethics')) {
+      title = 'Robotics Ethics Workshop';
+      desc = 'Reflective discussion on ethics, safety rules, and helpful choices for social robots.';
+      icon = '⚖️';
+    } else if (clean.includes('storytelling')) {
+      title = 'Imaginative Storytelling Adventure';
+      desc = 'Collaborative story creation in a magical forest setting with animated expressions.';
+      icon = '🌲';
+    }
+
     return {
       displayName: title || rawName,
       category: 'plan',
-      description: 'Structured educational activity plan created via the Lesson Planner.',
-      icon: '📚',
+      description: desc,
+      icon,
       badge: 'Lesson Plan',
     };
   }
 
   // Handle custom interactions
   if (clean.startsWith('custom_interaction_') || clean.startsWith('interaction_')) {
-    const title = clean
+    let title = clean
       .replace(/^custom_interaction_/, '')
       .replace(/^interaction_/, '')
       .split('_')
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
+    let desc = 'Custom teacher interaction flow created via the Interaction Designer.';
+    let icon = '🎭';
+
+    if (clean.includes('greeter') || clean.includes('morning')) {
+      title = 'Classroom Morning Greeter';
+      desc = 'Gigi welcomes students, inquires about their mood, and responds with empathetic gestures.';
+      icon = '👋';
+    } else if (clean.includes('guessing') || clean.includes('guess') || clean.includes('secret')) {
+      title = 'Secret Number Challenge';
+      desc = 'Interactive number guessing puzzle where Gigi evaluates student answers.';
+      icon = '🎯';
+    }
+
     return {
       displayName: title || rawName,
       category: 'custom',
-      description: 'Custom teacher interaction flow created via the Interaction Designer.',
-      icon: '🎭',
+      description: desc,
+      icon,
       badge: 'Custom Interaction',
     };
   }

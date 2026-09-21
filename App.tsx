@@ -510,6 +510,7 @@ function AppContent({
   const [isLoadingScripts, setIsLoadingScripts] = useState(false);
   const [isRobotCalibrated, setIsRobotCalibrated] = useState<boolean | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'core' | 'plan' | 'custom'>('all');
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('all');
   const [btDevices, setBtDevices] = useState<any[]>([]);
   const [selectedBtDevice, setSelectedBtDevice] = useState<any>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -620,7 +621,9 @@ function AppContent({
       if (typeof msg.calibrated === 'boolean') {
         setIsRobotCalibrated(msg.calibrated);
       }
-      const coreList: ScriptItem[] = (msg.available_demos || []).map((name: string) => {
+      // Deduplicate core demo list
+      const rawDemos: string[] = Array.from(new Set<string>(msg.available_demos || []));
+      const coreList: ScriptItem[] = rawDemos.map((name: string) => {
         const meta = getActivityMetadata(name);
         return {
           name,
@@ -633,31 +636,49 @@ function AppContent({
         };
       });
 
-      const planList: ScriptItem[] = (msg.available_activity_plans || []).map((item: any) => {
-        const meta = getActivityMetadata(item.folder || item.title || '');
-        return {
-          name: item.folder,
-          displayName: item.title || meta.displayName,
-          type: 'plan',
-          category: 'plan',
-          description: meta.description,
-          icon: '📚',
-          badge: 'Lesson Plan',
-        };
-      });
+      // Deduplicate plans
+      const seenPlans = new Set<string>();
+      const planList: ScriptItem[] = (msg.available_activity_plans || [])
+        .filter((item: any) => {
+          const folder = item.folder || item.title || '';
+          if (seenPlans.has(folder)) return false;
+          seenPlans.add(folder);
+          return true;
+        })
+        .map((item: any) => {
+          const meta = getActivityMetadata(item.folder || item.title || '');
+          return {
+            name: item.folder,
+            displayName: item.title && item.title !== item.folder ? item.title : meta.displayName,
+            type: 'plan',
+            category: 'plan',
+            description: meta.description,
+            icon: meta.icon || '📚',
+            badge: meta.badge || 'Lesson Plan',
+          };
+        });
 
-      const interactionList: ScriptItem[] = (msg.available_custom_interactions || []).map((item: any) => {
-        const meta = getActivityMetadata(item.folder || item.title || '');
-        return {
-          name: item.folder,
-          displayName: item.title || meta.displayName,
-          type: 'custom',
-          category: 'custom',
-          description: meta.description,
-          icon: '🎭',
-          badge: 'Custom Interaction',
-        };
-      });
+      // Deduplicate custom interactions
+      const seenInteractions = new Set<string>();
+      const interactionList: ScriptItem[] = (msg.available_custom_interactions || [])
+        .filter((item: any) => {
+          const folder = item.folder || item.title || '';
+          if (seenInteractions.has(folder)) return false;
+          seenInteractions.add(folder);
+          return true;
+        })
+        .map((item: any) => {
+          const meta = getActivityMetadata(item.folder || item.title || '');
+          return {
+            name: item.folder,
+            displayName: item.title && item.title !== item.folder ? item.title : meta.displayName,
+            type: 'custom',
+            category: 'custom',
+            description: meta.description,
+            icon: meta.icon || '🎭',
+            badge: meta.badge || 'Custom Interaction',
+          };
+        });
 
       const combined = [...coreList, ...planList, ...interactionList];
       setScripts(combined);
@@ -1691,6 +1712,8 @@ Conform strictly to JSON state machine specification:
           scripts={scripts}
           selectedCategory={selectedCategory}
           setSelectedCategory={setSelectedCategory}
+          subCategoryFilter={subCategoryFilter}
+          setSubCategoryFilter={setSubCategoryFilter}
           selectedScript={selectedScript}
           setSelectedScript={setSelectedScript}
           isRunning={isRunning}

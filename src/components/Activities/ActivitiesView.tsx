@@ -21,6 +21,8 @@ export interface ActivitiesViewProps {
   scripts: ScriptItem[];
   selectedCategory: MainCategoryTab | string;
   setSelectedCategory: (cat: any) => void;
+  subCategoryFilter: string;
+  setSubCategoryFilter: (cat: string) => void;
   selectedScript: string | null;
   setSelectedScript: (script: string | null) => void;
   isRunning: boolean;
@@ -38,6 +40,8 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   scripts,
   selectedCategory,
   setSelectedCategory,
+  subCategoryFilter,
+  setSubCategoryFilter,
   selectedScript,
   setSelectedScript,
   isRunning,
@@ -45,14 +49,22 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   handleRunScript,
   handleStopScript,
 }) => {
-  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('all');
+  // Deduplicate incoming scripts by name
+  const uniqueScripts = useMemo(() => {
+    const seen = new Set<string>();
+    return scripts.filter((s) => {
+      if (seen.has(s.name)) return false;
+      seen.add(s.name);
+      return true;
+    });
+  }, [scripts]);
 
-  // Compute counts
+  // Compute counts based on unique items
   const counts = useMemo(() => {
     let core = 0;
     let plan = 0;
     let custom = 0;
-    for (const s of scripts) {
+    for (const s of uniqueScripts) {
       if (s.type === 'core' || s.type === 'demo') {
         core++;
       } else if (s.type === 'plan' || (s.type === 'script' && s.name.startsWith('activity_plan_'))) {
@@ -63,12 +75,12 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         core++;
       }
     }
-    return { all: scripts.length, core, plan, custom };
-  }, [scripts]);
+    return { all: uniqueScripts.length, core, plan, custom };
+  }, [uniqueScripts]);
 
   // Filtered list
   const filteredActivities = useMemo(() => {
-    return scripts.filter((s) => {
+    return uniqueScripts.filter((s) => {
       // 1. Filter by top-level category
       if (selectedCategory === 'core') {
         const isCore = s.type === 'core' || s.type === 'demo';
@@ -81,7 +93,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         if (!isCustom) return false;
       }
 
-      // 2. Filter by subcategory pill (if applicable)
+      // 2. Filter by subcategory pill (for core activities or all)
       if (subCategoryFilter !== 'all' && (selectedCategory === 'core' || selectedCategory === 'all')) {
         if (s.category !== subCategoryFilter) {
           return false;
@@ -90,7 +102,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
 
       return true;
     });
-  }, [scripts, selectedCategory, subCategoryFilter]);
+  }, [uniqueScripts, selectedCategory, subCategoryFilter]);
 
   const selectedItem = useMemo(() => {
     return scripts.find((s) => s.name === selectedScript) || null;
@@ -196,8 +208,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                           style={[styles.subCategoryPill, isActive && styles.subCategoryPillActive]}
                           onPress={() => setSubCategoryFilter(pill.key)}
                           activeOpacity={0.7}
+                          accessibilityRole="button"
+                          focusable={true}
+                          accessibilityLabel={`Filter by ${pill.label}`}
+                          accessibilityState={{ selected: isActive }}
                         >
-                          <Text style={[styles.subCategoryText, isActive && styles.subCategoryTextActive]}>
+                          <Text
+                            style={[styles.subCategoryText, isActive && styles.subCategoryTextActive]}
+                          >
                             {pill.label}
                           </Text>
                         </TouchableOpacity>
@@ -215,11 +233,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                       </Text>
                     </View>
                   ) : (
-                    filteredActivities.map((s) => {
+                    filteredActivities.map((s, idx) => {
                       const isSelected = selectedScript === s.name;
                       return (
                         <TouchableOpacity
-                          key={s.name}
+                          key={`${s.name}-${idx}`}
                           style={[styles.activityCard, isSelected && styles.activityCardSelected]}
                           onPress={() => setSelectedScript(s.name)}
                           activeOpacity={0.7}
