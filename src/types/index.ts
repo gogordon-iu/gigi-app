@@ -1,7 +1,25 @@
+export type ActivityType = 'core' | 'plan' | 'custom' | 'demo' | 'script' | 'zhennan';
+
+export type ActivityCategory =
+  | 'all'
+  | 'core'
+  | 'learning'
+  | 'social'
+  | 'scripted'
+  | 'autonomous'
+  | 'plan'
+  | 'custom'
+  | 'utility';
+
 export interface ScriptItem {
   name: string;
-  type: 'demo' | 'script' | 'zhennan';
-  displayName?: string;
+  type: ActivityType;
+  category?: ActivityCategory;
+  displayName: string;
+  description?: string;
+  icon?: string;
+  badge?: string;
+  module?: string;
 }
 
 export interface LogEntry {

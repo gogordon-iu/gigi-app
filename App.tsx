@@ -30,6 +30,7 @@ import {
   IssuedToken,
 } from './src/types';
 import { STRATEGY_CATALOG_STR } from './src/constants/strategies';
+import { getActivityMetadata } from './src/constants/activities';
 
 // Modular View Components
 import { LockScreen } from './src/components/Auth/LockScreen';
@@ -508,7 +509,7 @@ function AppContent({
   const [runningScriptInfo, setRunningScriptInfo] = useState<any>(null);
   const [isLoadingScripts, setIsLoadingScripts] = useState(false);
   const [isRobotCalibrated, setIsRobotCalibrated] = useState<boolean | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<'demo' | 'script'>('demo');
+  const [selectedCategory, setSelectedCategory] = useState<'all' | 'core' | 'plan' | 'custom'>('all');
   const [btDevices, setBtDevices] = useState<any[]>([]);
   const [selectedBtDevice, setSelectedBtDevice] = useState<any>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -619,21 +620,52 @@ function AppContent({
       if (typeof msg.calibrated === 'boolean') {
         setIsRobotCalibrated(msg.calibrated);
       }
-      const demoList: ScriptItem[] = (msg.available_demos || []).map((name: string) => ({ name, type: 'demo' }));
-      const planList: ScriptItem[] = (msg.available_activity_plans || []).map((item: any) => ({
-        name: item.folder,
-        displayName: item.title || item.folder,
-        type: 'script',
-      }));
-      const interactionList: ScriptItem[] = (msg.available_custom_interactions || []).map((item: any) => ({
-        name: item.folder,
-        displayName: item.title || item.folder,
-        type: 'script',
-      }));
-      const combined = [...demoList, ...planList, ...interactionList];
+      const coreList: ScriptItem[] = (msg.available_demos || []).map((name: string) => {
+        const meta = getActivityMetadata(name);
+        return {
+          name,
+          displayName: meta.displayName,
+          type: 'core',
+          category: meta.category,
+          description: meta.description,
+          icon: meta.icon,
+          badge: meta.badge,
+        };
+      });
+
+      const planList: ScriptItem[] = (msg.available_activity_plans || []).map((item: any) => {
+        const meta = getActivityMetadata(item.folder || item.title || '');
+        return {
+          name: item.folder,
+          displayName: item.title || meta.displayName,
+          type: 'plan',
+          category: 'plan',
+          description: meta.description,
+          icon: '📚',
+          badge: 'Lesson Plan',
+        };
+      });
+
+      const interactionList: ScriptItem[] = (msg.available_custom_interactions || []).map((item: any) => {
+        const meta = getActivityMetadata(item.folder || item.title || '');
+        return {
+          name: item.folder,
+          displayName: item.title || meta.displayName,
+          type: 'custom',
+          category: 'custom',
+          description: meta.description,
+          icon: '🎭',
+          badge: 'Custom Interaction',
+        };
+      });
+
+      const combined = [...coreList, ...planList, ...interactionList];
       setScripts(combined);
       setIsLoadingScripts(false);
-      addLog(`Retrieved ${combined.length} activities from Gigi.`, 'success');
+      addLog(
+        `Retrieved ${combined.length} activities (${coreList.length} core, ${planList.length} plans, ${interactionList.length} custom) from Gigi.`,
+        'success'
+      );
     } else if (msg.status === 'starting') {
       setIsRunning(true);
       setRunningScriptInfo({ name: msg.name, type: msg.type, pid: msg.pid });

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import { styles } from '../../styles/theme';
 import { ScriptItem, ConnectionStatus } from '../../types';
 import { CalibrationBanner } from './CalibrationBanner';
 
+export type MainCategoryTab = 'all' | 'core' | 'plan' | 'custom';
+
 export interface ActivitiesViewProps {
   connectionStatus: ConnectionStatus;
   handlePing: () => void;
@@ -17,8 +19,8 @@ export interface ActivitiesViewProps {
   isRobotCalibrated: boolean | null;
   handleCalibrateMotors: () => void;
   scripts: ScriptItem[];
-  selectedCategory: 'demo' | 'script';
-  setSelectedCategory: (cat: 'demo' | 'script') => void;
+  selectedCategory: MainCategoryTab | string;
+  setSelectedCategory: (cat: any) => void;
   selectedScript: string | null;
   setSelectedScript: (script: string | null) => void;
   isRunning: boolean;
@@ -43,6 +45,73 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   handleRunScript,
   handleStopScript,
 }) => {
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('all');
+
+  // Compute counts
+  const counts = useMemo(() => {
+    let core = 0;
+    let plan = 0;
+    let custom = 0;
+    for (const s of scripts) {
+      if (s.type === 'core' || s.type === 'demo') {
+        core++;
+      } else if (s.type === 'plan' || (s.type === 'script' && s.name.startsWith('activity_plan_'))) {
+        plan++;
+      } else if (s.type === 'custom' || (s.type === 'script' && s.name.startsWith('custom_interaction_'))) {
+        custom++;
+      } else {
+        core++;
+      }
+    }
+    return { all: scripts.length, core, plan, custom };
+  }, [scripts]);
+
+  // Filtered list
+  const filteredActivities = useMemo(() => {
+    return scripts.filter((s) => {
+      // 1. Filter by top-level category
+      if (selectedCategory === 'core') {
+        const isCore = s.type === 'core' || s.type === 'demo';
+        if (!isCore) return false;
+      } else if (selectedCategory === 'plan') {
+        const isPlan = s.type === 'plan' || (s.type === 'script' && s.name.startsWith('activity_plan_'));
+        if (!isPlan) return false;
+      } else if (selectedCategory === 'custom') {
+        const isCustom = s.type === 'custom' || (s.type === 'script' && s.name.startsWith('custom_interaction_'));
+        if (!isCustom) return false;
+      }
+
+      // 2. Filter by subcategory pill (if applicable)
+      if (subCategoryFilter !== 'all' && (selectedCategory === 'core' || selectedCategory === 'all')) {
+        if (s.category !== subCategoryFilter) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [scripts, selectedCategory, subCategoryFilter]);
+
+  const selectedItem = useMemo(() => {
+    return scripts.find((s) => s.name === selectedScript) || null;
+  }, [scripts, selectedScript]);
+
+  const mainTabs: { key: MainCategoryTab; label: string; count: number }[] = [
+    { key: 'all', label: '🌟 All Activities', count: counts.all },
+    { key: 'core', label: '📦 Core Package', count: counts.core },
+    { key: 'plan', label: '📚 Lesson Plans', count: counts.plan },
+    { key: 'custom', label: '🎭 Custom', count: counts.custom },
+  ];
+
+  const subCategoryPills = [
+    { key: 'all', label: 'All Domains' },
+    { key: 'learning', label: '🎓 Learning Games' },
+    { key: 'social', label: '💬 Social & Greeters' },
+    { key: 'scripted', label: '📖 Scripted Stories' },
+    { key: 'autonomous', label: '🌱 Autonomous' },
+    { key: 'utility', label: '⚙️ Hardware Utility' },
+  ];
+
   return (
     <ScrollView
       style={styles.scrollView}
@@ -92,82 +161,161 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
               <>
                 <Text style={[styles.inputLabel, { marginTop: 15 }]}>Available Activities:</Text>
 
-                {/* Category Selector/Tabs */}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    backgroundColor: '#F4F3F8',
-                    borderRadius: 10,
-                    padding: 3,
-                    borderWidth: 1.5,
-                    borderColor: '#E2DFF0',
-                    marginVertical: 10,
-                  }}
-                >
-                  {(['demo', 'script'] as const).map((cat) => {
-                    const isActive = selectedCategory === cat;
+                {/* Modern Multi-Category Segmented Tabs */}
+                <View style={styles.categoryTabsContainer}>
+                  {mainTabs.map((tab) => {
+                    const isActive = selectedCategory === tab.key;
                     return (
                       <TouchableOpacity
-                        key={cat}
-                        style={{
-                          flex: 1,
-                          paddingVertical: 8,
-                          alignItems: 'center',
-                          borderRadius: 8,
-                          backgroundColor: isActive ? '#FFFFFF' : 'transparent',
+                        key={tab.key}
+                        style={[styles.categoryTabButton, isActive && styles.categoryTabButtonActive]}
+                        onPress={() => {
+                          setSelectedCategory(tab.key);
+                          setSubCategoryFilter('all');
                         }}
-                        onPress={() => setSelectedCategory(cat)}
                         activeOpacity={0.8}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: isActive }}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: isActive ? '#5E43F3' : '#4E4B66' }}>
-                          {cat === 'demo' ? '📁 Demo Folder' : '✨ Custom Activities'}
+                        <Text style={[styles.categoryTabText, isActive && styles.categoryTabTextActive]}>
+                          {tab.label} ({tab.count})
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
-                {/* Scrollable list of script chips */}
-                <View style={styles.scriptListContainer}>
-                  {scripts
-                    .filter((s) => s.type === selectedCategory)
-                    .map((s) => {
-                      const isSelected = selectedScript === s.name;
+                {/* Domain Subcategory Filters (visible for Core or All) */}
+                {(selectedCategory === 'core' || selectedCategory === 'all') && (
+                  <View style={styles.subCategoryContainer}>
+                    {subCategoryPills.map((pill) => {
+                      const isActive = subCategoryFilter === pill.key;
                       return (
                         <TouchableOpacity
-                          key={s.name}
-                          style={[styles.scriptChip, isSelected && styles.scriptChipSelected]}
-                          onPress={() => setSelectedScript(s.name)}
+                          key={pill.key}
+                          style={[styles.subCategoryPill, isActive && styles.subCategoryPillActive]}
+                          onPress={() => setSubCategoryFilter(pill.key)}
                           activeOpacity={0.7}
                         >
-                          <Text style={[styles.scriptChipText, isSelected && styles.scriptChipTextSelected]}>
-                            {s.displayName || s.name}
+                          <Text style={[styles.subCategoryText, isActive && styles.subCategoryTextActive]}>
+                            {pill.label}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
+                  </View>
+                )}
+
+                {/* Activity Cards List */}
+                <View style={styles.activityCardsGrid}>
+                  {filteredActivities.length === 0 ? (
+                    <View style={{ padding: 16, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 13, color: '#6B7280' }}>
+                        No activities match the selected filter.
+                      </Text>
+                    </View>
+                  ) : (
+                    filteredActivities.map((s) => {
+                      const isSelected = selectedScript === s.name;
+                      return (
+                        <TouchableOpacity
+                          key={s.name}
+                          style={[styles.activityCard, isSelected && styles.activityCardSelected]}
+                          onPress={() => setSelectedScript(s.name)}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Select activity ${s.displayName || s.name}`}
+                        >
+                          <Text style={styles.activityCardIcon}>{s.icon || '🚀'}</Text>
+                          <View style={styles.activityCardContent}>
+                            <View style={styles.activityCardHeader}>
+                              <Text
+                                style={[styles.activityCardTitle, isSelected && styles.activityCardTitleSelected]}
+                                numberOfLines={1}
+                              >
+                                {s.displayName || s.name}
+                              </Text>
+                              {s.badge && (
+                                <View style={styles.activityCardBadge}>
+                                  <Text style={styles.activityCardBadgeText}>{s.badge}</Text>
+                                </View>
+                              )}
+                            </View>
+                            {s.description ? (
+                              <Text style={styles.activityCardDesc} numberOfLines={2}>
+                                {s.description}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
                 </View>
 
-                {/* Execution Control Row */}
-                <View style={styles.actionsRow}>
-                  <TouchableOpacity
-                    style={[styles.runButton, (!selectedScript || isRunning) && styles.buttonDisabled]}
-                    disabled={!selectedScript || isRunning}
-                    onPress={handleRunScript}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.buttonText}>🚀 RUN ACTIVITY</Text>
-                  </TouchableOpacity>
+                {/* Selected Activity Detail & Action Panel */}
+                {selectedItem && (
+                  <View style={styles.activityDetailCard}>
+                    <View style={styles.activityDetailHeader}>
+                      <Text style={styles.activityDetailTitle}>
+                        {selectedItem.icon || '🚀'} {selectedItem.displayName}
+                      </Text>
+                      {selectedItem.badge && (
+                        <View style={styles.activityCardBadge}>
+                          <Text style={styles.activityCardBadgeText}>{selectedItem.badge}</Text>
+                        </View>
+                      )}
+                    </View>
 
-                  <TouchableOpacity
-                    style={[styles.stopButton, !isRunning && styles.buttonDisabled]}
-                    disabled={!isRunning}
-                    onPress={handleStopScript}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.buttonText}>🛑 STOP</Text>
-                  </TouchableOpacity>
-                </View>
+                    {selectedItem.description ? (
+                      <Text style={[styles.activityCardDesc, { marginBottom: 6 }]}>
+                        {selectedItem.description}
+                      </Text>
+                    ) : null}
+
+                    <Text style={styles.activityDetailTarget}>
+                      Target: {selectedItem.name}
+                    </Text>
+
+                    {isRobotCalibrated === false && selectedItem.name !== 'calibrate_motors.py' && (
+                      <View
+                        style={{
+                          backgroundColor: '#FFF4E5',
+                          borderRadius: 8,
+                          padding: 8,
+                          marginVertical: 8,
+                          borderWidth: 1,
+                          borderColor: '#FFD8B3',
+                        }}
+                      >
+                        <Text style={{ color: '#D97706', fontSize: 11, fontWeight: '700' }}>
+                          ⚠️ Movement Locked: Motors must be calibrated before starting this activity.
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Execution Controls */}
+                    <View style={styles.actionsRow}>
+                      <TouchableOpacity
+                        style={[styles.runButton, (!selectedScript || isRunning) && styles.buttonDisabled]}
+                        disabled={!selectedScript || isRunning}
+                        onPress={handleRunScript}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.buttonText}>🚀 RUN ACTIVITY</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.stopButton, !isRunning && styles.buttonDisabled]}
+                        disabled={!isRunning}
+                        onPress={handleStopScript}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.buttonText}>🛑 STOP</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </>
             ) : (
               !isLoadingScripts && (
