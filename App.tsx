@@ -28,6 +28,8 @@ import {
   TransportMode,
   ConnectionStatus,
   IssuedToken,
+  WifiStatus,
+  WifiNetwork,
 } from './src/types';
 import { STRATEGY_CATALOG_STR } from './src/constants/strategies';
 import { getActivityMetadata } from './src/constants/activities';
@@ -516,6 +518,11 @@ function AppContent({
   const [isScanning, setIsScanning] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logFilter, setLogFilter] = useState<'all' | 'info' | 'output' | 'error'>('all');
+  const [wifiStatus, setWifiStatus] = useState<WifiStatus | null>(null);
+  const [wifiNetworks, setWifiNetworks] = useState<WifiNetwork[]>([]);
+  const [isScanningWifi, setIsScanningWifi] = useState(false);
+  const [isConnectingWifi, setIsConnectingWifi] = useState(false);
+  const [isAmbientAlive, setIsAmbientAlive] = useState(false);
 
   const activeConnection = useRef<{ send: (data: string) => Promise<void>; disconnect: () => void } | null>(null);
   const dataBuffer = useRef<string>('');
@@ -604,6 +611,10 @@ function AppContent({
       });
     }
 
+    if (msg.wifi) {
+      setWifiStatus(msg.wifi);
+    }
+
     if (msg.status === 'ready') {
       if (handshakeTimeoutRef.current) {
         clearTimeout(handshakeTimeoutRef.current);
@@ -614,12 +625,18 @@ function AppContent({
         fallbackQueryRef.current = null;
       }
       addLog('Handshake completed successfully!', 'success');
+      if (msg.wifi) {
+        setWifiStatus(msg.wifi);
+      }
       setIsLoadingScripts(true);
       sendRawCommand('STATUS');
       sendRawCommand('LIST');
     } else if (msg.status === 'list') {
       if (typeof msg.calibrated === 'boolean') {
         setIsRobotCalibrated(msg.calibrated);
+      }
+      if (msg.wifi) {
+        setWifiStatus(msg.wifi);
       }
       // Deduplicate core demo list
       const rawDemos: string[] = Array.from(new Set<string>(msg.available_demos || []));
@@ -703,6 +720,12 @@ function AppContent({
       if (typeof msg.calibrated === 'boolean') {
         setIsRobotCalibrated(msg.calibrated);
       }
+      if (typeof msg.ambient === 'boolean') {
+        setIsAmbientAlive(msg.ambient);
+      }
+      if (msg.wifi) {
+        setWifiStatus(msg.wifi);
+      }
       if (msg.running) {
         setIsRunning(true);
         setRunningScriptInfo({ name: msg.name, type: msg.type, pid: msg.pid });
@@ -710,8 +733,41 @@ function AppContent({
       } else {
         setIsRunning(false);
         setRunningScriptInfo(null);
-        addLog('Gigi status: idle, ready to execute.', 'info');
+        if (msg.ambient) {
+          addLog('Gigi status: idle in ambient alive mode (gaze & face active).', 'info');
+        } else {
+          addLog('Gigi status: idle, ready to execute.', 'info');
+        }
       }
+    } else if (msg.status === 'wifi_status') {
+      setWifiStatus(msg);
+      addLog(`Robot Wi-Fi: ${msg.connected ? `Connected to ${msg.ssid} (${msg.ip})` : 'Offline'}`, msg.connected ? 'success' : 'info');
+    } else if (msg.status === 'wifi_scan') {
+      setIsScanningWifi(false);
+      setWifiNetworks(msg.networks || []);
+      addLog(`Discovered ${msg.count || 0} Wi-Fi networks nearby.`, 'success');
+    } else if (msg.status === 'wifi_connecting') {
+      addLog(`Connecting to Wi-Fi "${msg.ssid}"...`, 'info');
+    } else if (msg.status === 'wifi_connect_result') {
+      setIsConnectingWifi(false);
+      if (msg.success) {
+        setWifiStatus({
+          connected: true,
+          ssid: msg.ssid,
+          ip: msg.ip,
+        });
+        addLog(`Wi-Fi connected! SSID: ${msg.ssid}, IP: ${msg.ip}`, 'success');
+        Alert.alert('Wi-Fi Connected', `Gigi joined "${msg.ssid}" successfully!\nIP: ${msg.ip}\nSSH: ssh orangepi@${msg.ip}`);
+      } else {
+        addLog(`Wi-Fi connection failed: ${msg.message}`, 'error');
+        Alert.alert('Connection Failed', msg.message || 'Failed to connect to Wi-Fi.');
+      }
+    } else if (msg.status === 'sleeping') {
+      setIsAmbientAlive(false);
+      addLog('Gigi is now sleeping and resting motors.', 'info');
+    } else if (msg.status === 'awake') {
+      setIsAmbientAlive(true);
+      addLog('Gigi is awake and alive!', 'success');
     } else if (msg.status === 'success' && msg.folder) {
       if (msg.folder.startsWith('custom_interaction_')) {
         setPlannedInteractionFolder(msg.folder);
@@ -748,6 +804,35 @@ function AppContent({
     } catch (e: any) {
       addLog(`Send failed: ${e.message}`, 'error');
     }
+  };
+
+  const sendJsonCommand = async (obj: any) => {
+    if (!activeConnection.current) return;
+    try {
+      const payload = JSON.stringify(obj);
+      addLog(`Sending: "${obj.command || 'json'}"`, 'info');
+      await activeConnection.current.send(payload + '\n');
+    } catch (e: any) {
+      addLog(`Send failed: ${e.message}`, 'error');
+    }
+  };
+
+  const handleScanWifi = () => {
+    setIsScanningWifi(true);
+    sendRawCommand('WIFI_SCAN');
+  };
+
+  const handleConnectWifi = (ssid: string, password: string) => {
+    setIsConnectingWifi(true);
+    sendJsonCommand({ command: 'wifi_connect', ssid, password });
+  };
+
+  const handleSleepGigi = () => {
+    sendRawCommand('SLEEP');
+  };
+
+  const handleWakeGigi = () => {
+    sendRawCommand('WAKE');
   };
 
   const connectToGigi = async () => {
@@ -1701,6 +1786,15 @@ Conform strictly to JSON state machine specification:
           handleClearLogs={handleClearLogs}
           filteredLogs={filteredLogs}
           logsScrollViewRef={logsScrollViewRef}
+          wifiStatus={wifiStatus}
+          wifiNetworks={wifiNetworks}
+          isScanningWifi={isScanningWifi}
+          isConnectingWifi={isConnectingWifi}
+          onScanWifi={handleScanWifi}
+          onConnectWifi={handleConnectWifi}
+          onSleepGigi={handleSleepGigi}
+          onWakeGigi={handleWakeGigi}
+          isAmbientAlive={isAmbientAlive}
         />
       ) : activeTab === 'activities' ? (
         <ActivitiesView

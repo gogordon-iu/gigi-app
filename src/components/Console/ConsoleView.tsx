@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
 import { styles } from '../../styles/theme';
-import { LogEntry, TransportMode, ConnectionStatus } from '../../types';
+import { LogEntry, TransportMode, ConnectionStatus, WifiStatus, WifiNetwork } from '../../types';
 
 export interface ConsoleViewProps {
   connectionMode: TransportMode;
@@ -24,6 +25,15 @@ export interface ConsoleViewProps {
   handleClearLogs: () => void;
   filteredLogs: LogEntry[];
   logsScrollViewRef: React.RefObject<any>;
+  wifiStatus?: WifiStatus | null;
+  wifiNetworks?: WifiNetwork[];
+  isScanningWifi?: boolean;
+  isConnectingWifi?: boolean;
+  onScanWifi?: () => void;
+  onConnectWifi?: (ssid: string, password: string) => void;
+  onSleepGigi?: () => void;
+  onWakeGigi?: () => void;
+  isAmbientAlive?: boolean;
 }
 
 export const ConsoleView: React.FC<ConsoleViewProps> = ({
@@ -41,7 +51,28 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
   handleClearLogs,
   filteredLogs,
   logsScrollViewRef,
+  wifiStatus,
+  wifiNetworks,
+  isScanningWifi,
+  isConnectingWifi,
+  onScanWifi,
+  onConnectWifi,
+  onSleepGigi,
+  onWakeGigi,
+  isAmbientAlive,
 }) => {
+  const [customSsid, setCustomSsid] = useState('');
+  const [customPassword, setCustomPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedSSH, setCopiedSSH] = useState(false);
+
+  const copyToClipboard = (text: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    }
+    setCopiedSSH(true);
+    setTimeout(() => setCopiedSSH(false), 2500);
+  };
   return (
     <ScrollView
       style={styles.scrollView}
@@ -175,6 +206,249 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
           </View>
         )}
       </View>
+
+      {/* Robot Wi-Fi & Developer SSH Card (Visible when connected) */}
+      {connectionStatus === 'connected' && (
+        <View style={styles.card}>
+          <View style={[styles.cardHeaderAccent, { backgroundColor: '#0284C7' }]} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>
+              🌐 Step 2: Robot Wi-Fi & Developer SSH
+            </Text>
+            {wifiStatus?.connected ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E3FAF0', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, borderWidth: 1, borderColor: '#A3EAD0' }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#00875A' }}>🟢 ONLINE</Text>
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF4E5', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, borderWidth: 1, borderColor: '#FFD8B3' }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#D97706' }}>⚠️ OFFLINE</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Current Status Box */}
+          <View style={{ backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, marginTop: 10, borderWidth: 1, borderColor: '#E2E8F0', gap: 8 }}>
+            {wifiStatus?.connected ? (
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '600' }}>Active Wi-Fi Network:</Text>
+                  <Text style={{ fontSize: 14, color: '#0F172A', fontWeight: '700' }}>📶 {wifiStatus.ssid}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '600' }}>Robot IP Address:</Text>
+                  <Text style={{ fontSize: 14, color: '#0284C7', fontWeight: '700', fontFamily: 'monospace' }}>{wifiStatus.ip}</Text>
+                </View>
+
+                {/* Developer SSH Command Box */}
+                <View style={{ marginTop: 6, backgroundColor: '#0F172A', borderRadius: 8, padding: 12 }}>
+                  <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: '600', marginBottom: 4 }}>
+                    💻 Developer SSH Terminal Link:
+                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: '#38BDF8', fontSize: 13, fontFamily: 'monospace', fontWeight: '700', flexShrink: 1 }}>
+                      ssh orangepi@{wifiStatus.ip}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => copyToClipboard(`ssh orangepi@${wifiStatus.ip}`)}
+                      style={{ backgroundColor: copiedSSH ? '#059669' : '#334155', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, marginLeft: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                        {copiedSSH ? '✓ Copied' : '📋 Copy'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ color: '#64748B', fontSize: 10, marginTop: 4 }}>
+                    Password: <Text style={{ color: '#CBD5E1', fontFamily: 'monospace' }}>orangepi</Text>
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 13, color: '#B45309', fontWeight: '700' }}>
+                  Gigi is not connected to local Wi-Fi.
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18 }}>
+                  Scan and join your Wi-Fi network below to enable SSH access and remote programming.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Wi-Fi Scanner and Join Form */}
+          <View style={{ marginTop: 14 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>
+                Join a Wi-Fi Network
+              </Text>
+              <TouchableOpacity
+                onPress={onScanWifi}
+                disabled={isScanningWifi}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: isScanningWifi ? '#E2E8F0' : '#E0F2FE',
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  gap: 6,
+                }}
+                activeOpacity={0.7}
+              >
+                {isScanningWifi ? (
+                  <ActivityIndicator size="small" color="#0284C7" />
+                ) : (
+                  <Text style={{ fontSize: 12 }}>📡</Text>
+                )}
+                <Text style={{ fontSize: 12, fontWeight: '700', color: isScanningWifi ? '#94A3B8' : '#0369A1' }}>
+                  {isScanningWifi ? 'Scanning...' : 'Scan Networks'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Scanned Networks Pills */}
+            {wifiNetworks && wifiNetworks.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, paddingVertical: 4, marginBottom: 10 }}
+              >
+                {wifiNetworks.map((net) => {
+                  const isSelected = (customSsid || wifiStatus?.ssid) === net.ssid;
+                  return (
+                    <TouchableOpacity
+                      key={net.ssid}
+                      onPress={() => setCustomSsid(net.ssid)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: isSelected ? '#EFF6FF' : '#F8FAFC',
+                        borderColor: isSelected ? '#3B82F6' : '#CBD5E1',
+                        borderWidth: 1.5,
+                        borderRadius: 8,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        gap: 6,
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ fontSize: 12 }}>📶</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#1D4ED8' : '#334155' }}>
+                        {net.ssid}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: '#64748B' }}>{net.signal}%</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {/* SSID Input */}
+            <View style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Network Name (SSID):</Text>
+              <TextInput
+                value={customSsid}
+                onChangeText={setCustomSsid}
+                placeholder="Enter or select Wi-Fi SSID"
+                placeholderTextColor="#94A3B8"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1.5,
+                  borderColor: '#CBD5E1',
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 13,
+                  color: '#0F172A',
+                }}
+              />
+            </View>
+
+            {/* Password Input */}
+            <View style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>Wi-Fi Password:</Text>
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Text style={{ fontSize: 11, color: '#0284C7', fontWeight: '600' }}>
+                    {showPassword ? 'Hide Password' : 'Show Password'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                value={customPassword}
+                onChangeText={setCustomPassword}
+                placeholder="Enter Wi-Fi password (leave empty if open)"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!showPassword}
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1.5,
+                  borderColor: '#CBD5E1',
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 13,
+                  color: '#0F172A',
+                }}
+              />
+            </View>
+
+            {/* Connect Button */}
+            <TouchableOpacity
+              onPress={() => onConnectWifi?.(customSsid, customPassword)}
+              disabled={!customSsid.trim() || isConnectingWifi}
+              style={{
+                backgroundColor: !customSsid.trim() || isConnectingWifi ? '#94A3B8' : '#0284C7',
+                borderRadius: 10,
+                paddingVertical: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'row',
+                gap: 8,
+              }}
+              activeOpacity={0.85}
+            >
+              {isConnectingWifi ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>Connecting to {customSsid}...</Text>
+                </>
+              ) : (
+                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>Connect Gigi to Wi-Fi</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Quick Sleep & Wake Controls */}
+          <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#E2E8F0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>
+                Robot Idle State: {isAmbientAlive ? '🟢 Alive & Tracking' : '💤 Resting'}
+              </Text>
+              <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                {isAmbientAlive ? 'Gigi is actively tracking and looking around' : 'Motors and sensors are resting'}
+              </Text>
+            </View>
+            {isAmbientAlive ? (
+              <TouchableOpacity
+                onPress={onSleepGigi}
+                style={{ backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>💤 Sleep</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={onWakeGigi}
+                style={{ backgroundColor: '#E0F2FE', borderWidth: 1, borderColor: '#7DD3FC', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>☀️ Wake Up</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Real-time holographic console */}
       <View style={styles.card}>

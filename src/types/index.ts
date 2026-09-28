@@ -80,3 +80,17 @@ export interface CustomInteraction {
   description?: string;
   scenes: any[];
 }
+
+export interface WifiStatus {
+  connected: boolean;
+  ssid: string;
+  ip: string;
+  hostname?: string;
+}
+
+export interface WifiNetwork {
+  ssid: string;
+  signal: number;
+  security: string;
+}
+
