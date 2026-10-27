@@ -30,14 +30,22 @@ import {
   IssuedToken,
   WifiStatus,
   WifiNetwork,
+  BtSshStatus,
+  BtShellEntry,
+  MotorJointName,
+  MotorCalibrationMap,
+  CalibrationStatusInfo,
 } from './src/types';
 import { STRATEGY_CATALOG_STR } from './src/constants/strategies';
 import { getActivityMetadata } from './src/constants/activities';
-
 // Modular View Components
 import { LockScreen } from './src/components/Auth/LockScreen';
 import { ConsoleView } from './src/components/Console/ConsoleView';
 import { ActivitiesView } from './src/components/Activities/ActivitiesView';
+import {
+  MotorCalibrationView,
+  DEFAULT_MOTOR_CALIBRATION_MAP,
+} from './src/components/Calibration/MotorCalibrationView';
 import { PlannerView } from './src/components/Planner/PlannerView';
 import { InteractionView } from './src/components/Interaction/InteractionView';
 import { ManagerView } from './src/components/Manager/ManagerView';
@@ -282,7 +290,7 @@ function AppContent({
   handleLogout,
 }: AppContentProps) {
   // Tab Navigation State
-  const [activeTab, setActiveTab] = useState<'console' | 'activities' | 'planner' | 'interaction' | 'manager'>('console');
+  const [activeTab, setActiveTab] = useState<'console' | 'activities' | 'calibration' | 'planner' | 'interaction' | 'manager'>('console');
   const isMobileBrowser =
     Platform.OS === 'web' &&
     typeof navigator !== 'undefined' &&
@@ -484,7 +492,7 @@ function AppContent({
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<any>(null);
   const [generatingImages, setGeneratingImages] = useState<{ [key: string]: boolean }>({});
-  const [selectedImageSize, setSelectedImageSize] = useState<'1024x1024' | '512x512' | '256x256'>('512x512');
+  const [selectedImageSize, setSelectedImageSize] = useState<'1024x1024' | '512x512' | '256x256'>('1024x1024');
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
   const [plannedFolder, setPlannedFolder] = useState<string | null>(null);
@@ -523,6 +531,23 @@ function AppContent({
   const [isScanningWifi, setIsScanningWifi] = useState(false);
   const [isConnectingWifi, setIsConnectingWifi] = useState(false);
   const [isAmbientAlive, setIsAmbientAlive] = useState(false);
+  const [connectedBtName, setConnectedBtName] = useState<string | null>(null);
+  const [btSshStatus, setBtSshStatus] = useState<BtSshStatus | null>(null);
+  const [isTogglingHotspot, setIsTogglingHotspot] = useState(false);
+  const [isTogglingBtSsh, setIsTogglingBtSsh] = useState(false);
+  const [btShellEntries, setBtShellEntries] = useState<BtShellEntry[]>([]);
+  const [btShellPrompt, setBtShellPrompt] = useState<string>('');
+  const [isBtShellRunning, setIsBtShellRunning] = useState<boolean>(false);
+
+  // Interactive Motor Calibration Studio States
+  const [motorCalibration, setMotorCalibration] = useState<MotorCalibrationMap>(
+    DEFAULT_MOTOR_CALIBRATION_MAP
+  );
+  const [calibrationStatusInfo, setCalibrationStatusInfo] =
+    useState<CalibrationStatusInfo | null>(null);
+  const [isSavingCalibration, setIsSavingCalibration] = useState<boolean>(false);
+  const [isTestingGesture, setIsTestingGesture] = useState<boolean>(false);
+  const [activeGestureName, setActiveGestureName] = useState<string | null>(null);
 
   const activeConnection = useRef<{ send: (data: string) => Promise<void>; disconnect: () => void } | null>(null);
   const dataBuffer = useRef<string>('');
@@ -602,6 +627,10 @@ function AppContent({
   };
 
   const processServerMessage = (msg: any) => {
+    if (typeof msg.bt_name === 'string' && msg.bt_name) {
+      setConnectedBtName(msg.bt_name);
+    }
+
     if (typeof msg.calibrated === 'boolean') {
       setIsRobotCalibrated((prev) => {
         if (prev !== msg.calibrated) {
@@ -613,6 +642,12 @@ function AppContent({
 
     if (msg.wifi) {
       setWifiStatus(msg.wifi);
+    }
+    if (msg.bt_ssh) {
+      setBtSshStatus(msg.bt_ssh);
+      if (msg.bt_ssh.shell_prompt) {
+        setBtShellPrompt(msg.bt_ssh.shell_prompt);
+      }
     }
 
     if (msg.status === 'ready') {
@@ -631,6 +666,63 @@ function AppContent({
       setIsLoadingScripts(true);
       sendRawCommand('STATUS');
       sendRawCommand('LIST');
+      sendRawCommand('CALIB_GET');
+    } else if (msg.status === 'calib_data') {
+      if (typeof msg.calibrated === 'boolean') {
+        setIsRobotCalibrated(msg.calibrated);
+      }
+      if (msg.calibration_status) {
+        setCalibrationStatusInfo(msg.calibration_status);
+      }
+      if (msg.motors && typeof msg.motors === 'object') {
+        setMotorCalibration((prev) => ({
+          ...prev,
+          ...msg.motors,
+        }));
+      }
+      addLog('Loaded motor calibration profile from Gigi.', 'success');
+    } else if (msg.status === 'calib_moved') {
+      addLog(
+        `Servo CH ${msg.channel}${msg.joint ? ` (${msg.joint})` : ''} → ${msg.pwm} PWM`,
+        'info'
+      );
+    } else if (msg.status === 'calib_wiggled') {
+      addLog(msg.message || `Wiggled servo channel ${msg.channel}.`, 'info');
+    } else if (msg.status === 'calib_released') {
+      setIsTestingGesture(false);
+      setActiveGestureName(null);
+      addLog(msg.message || 'All motor PWM channels released.', 'info');
+    } else if (msg.status === 'calib_homed') {
+      addLog(msg.message || 'All motors moved to center home pose.', 'success');
+    } else if (msg.status === 'calib_gesture_started') {
+      setIsTestingGesture(true);
+      setActiveGestureName(msg.gesture || null);
+      addLog(msg.message || `Testing gesture "${msg.gesture}"...`, 'info');
+    } else if (msg.status === 'calib_gesture_completed') {
+      setIsTestingGesture(false);
+      setActiveGestureName(null);
+      addLog(msg.message || `Finished gesture "${msg.gesture}".`, 'success');
+    } else if (msg.status === 'calib_saved') {
+      setIsSavingCalibration(false);
+      if (typeof msg.calibrated === 'boolean') {
+        setIsRobotCalibrated(msg.calibrated);
+      }
+      if (msg.calibration_status) {
+        setCalibrationStatusInfo(msg.calibration_status);
+      }
+      if (msg.motors && typeof msg.motors === 'object') {
+        setMotorCalibration((prev) => ({
+          ...prev,
+          ...msg.motors,
+        }));
+      }
+      addLog(msg.message || 'Motor calibration saved to robot!', 'success');
+      Alert.alert(
+        'Calibration Saved',
+        msg.calibrated
+          ? 'Motor calibration saved to Gigi! Physical movement is now unlocked.'
+          : 'Calibration file saved, but some required joints still have uncalibrated or template bounds (290..310). Please verify Neck, Torso, and Shoulders.'
+      );
     } else if (msg.status === 'list') {
       if (typeof msg.calibrated === 'boolean') {
         setIsRobotCalibrated(msg.calibrated);
@@ -762,12 +854,179 @@ function AppContent({
         addLog(`Wi-Fi connection failed: ${msg.message}`, 'error');
         Alert.alert('Connection Failed', msg.message || 'Failed to connect to Wi-Fi.');
       }
+    } else if (msg.status === 'wifi_hotspot_starting') {
+      addLog(msg.message || 'Initializing Gigi local Wi-Fi router...', 'info');
+    } else if (msg.status === 'wifi_hotspot_result') {
+      setIsTogglingHotspot(false);
+      if (msg.success) {
+        if (msg.active) {
+          setWifiStatus({
+            connected: true,
+            ssid: msg.ssid,
+            ip: msg.ip || '10.42.0.1',
+            hotspot_active: true,
+            hotspot_ssid: msg.ssid,
+            hotspot_ip: msg.ip || '10.42.0.1',
+            hotspot_password: msg.password,
+            ssh_command: msg.ssh_command,
+          });
+          addLog(`Gigi Wi-Fi router active! SSID: ${msg.ssid}, IP: ${msg.ip || '10.42.0.1'}`, 'success');
+          Alert.alert(
+            'Gigi Wi-Fi Router Active',
+            `Connect to "${msg.ssid}" to access Gigi.\nPassword: ${msg.password || 'Not provided'}\nIP: ${msg.ip || '10.42.0.1'}\nSSH: ${msg.ssh_command || `ssh orangepi@${msg.ip || '10.42.0.1'}`}`
+          );
+        } else {
+          setWifiStatus((prev) => prev ? { ...prev, hotspot_active: false, hotspot_ssid: '', hotspot_password: '' } : null);
+          addLog(msg.message || 'Gigi Wi-Fi router stopped.', 'info');
+        }
+      } else {
+        addLog(`Gigi Wi-Fi router error: ${msg.message || 'Failed to toggle Gigi Wi-Fi router.'}`, 'error');
+        Alert.alert('Hotspot Error', msg.message || 'Failed to toggle Gigi Wi-Fi router.');
+      }
+    } else if (msg.status === 'bt_ssh_result') {
+      setIsTogglingBtSsh(false);
+      if (msg.success) {
+        setBtSshStatus({
+          enabled: Boolean(msg.enabled),
+          channel: msg.channel || 2,
+          bt_name: msg.bt_name,
+          bt_mac: msg.bt_mac,
+          ssh_command: msg.ssh_command,
+          shell_cwd: msg.shell_cwd,
+          shell_prompt: msg.shell_prompt,
+          shell_running: msg.shell_running,
+        });
+        if (msg.shell_prompt) {
+          setBtShellPrompt(msg.shell_prompt);
+        }
+        if (!msg.enabled) {
+          setIsBtShellRunning(false);
+        }
+        addLog(
+          msg.message || (msg.enabled ? 'Bluetooth SSH terminal enabled.' : 'Bluetooth SSH disabled.'),
+          msg.enabled ? 'success' : 'info'
+        );
+      } else {
+        addLog(`Bluetooth SSH error: ${msg.message || 'Failed to toggle Bluetooth SSH.'}`, 'error');
+        Alert.alert('Bluetooth SSH Error', msg.message || 'Failed to toggle Bluetooth SSH.');
+      }
+    } else if (msg.status === 'bt_shell_started') {
+      setIsBtShellRunning(true);
+      if (msg.prompt) {
+        setBtShellPrompt(msg.prompt);
+      }
+      setBtShellEntries((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.running && last.command === (msg.command || '')) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            prompt: msg.prompt || btShellPrompt,
+            command: msg.command || '',
+            output: '',
+            running: true,
+            timestamp: new Date().toLocaleTimeString(),
+          },
+        ];
+      });
+    } else if (msg.status === 'bt_shell_output') {
+      const chunk = typeof msg.data === 'string' ? msg.data : '';
+      if (chunk) {
+        setBtShellEntries((prev) => {
+          if (prev.length === 0) {
+            return [
+              {
+                id: `${Date.now()}-${Math.random()}`,
+                prompt: btShellPrompt,
+                command: msg.command || '',
+                output: chunk.replace(/\n$/, ''),
+                running: true,
+                timestamp: new Date().toLocaleTimeString(),
+              },
+            ];
+          }
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          const prevOut = updated[lastIdx].output;
+          const combined = prevOut ? `${prevOut}\n${chunk.replace(/\n$/, '')}` : chunk.replace(/\n$/, '');
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            output: combined,
+          };
+          return updated;
+        });
+      }
+    } else if (msg.status === 'bt_shell_result') {
+      setIsBtShellRunning(false);
+      if (msg.prompt) {
+        setBtShellPrompt(msg.prompt);
+      }
+      setBtShellEntries((prev) => {
+        if (prev.length === 0 || !prev[prev.length - 1].running) {
+          return [
+            ...prev,
+            {
+              id: `${Date.now()}-${Math.random()}`,
+              prompt: msg.prompt || btShellPrompt,
+              command: msg.command || '',
+              output: typeof msg.output === 'string' ? msg.output : '',
+              returncode: typeof msg.returncode === 'number' ? msg.returncode : 0,
+              running: false,
+              error: msg.error,
+              timestamp: new Date().toLocaleTimeString(),
+            },
+          ];
+        }
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        updated[lastIdx] = {
+          ...updated[lastIdx],
+          output: updated[lastIdx].output || (typeof msg.output === 'string' ? msg.output : ''),
+          returncode: typeof msg.returncode === 'number' ? msg.returncode : 0,
+          running: false,
+          error: msg.error,
+        };
+        return updated;
+      });
+    } else if (msg.status === 'bt_shell_stop_result') {
+      setIsBtShellRunning(false);
+      if (msg.prompt) {
+        setBtShellPrompt(msg.prompt);
+      }
+      setBtShellEntries((prev) => {
+        if (prev.length === 0) return prev;
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (updated[lastIdx].running) {
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            running: false,
+            error: msg.message || '^C Interrupted',
+          };
+        }
+        return updated;
+      });
+    } else if (msg.status === 'bt_shell_status') {
+      setIsBtShellRunning(Boolean(msg.running));
+      if (msg.prompt) {
+        setBtShellPrompt(msg.prompt);
+      }
+    } else if (msg.status === 'bt_shell_input_result') {
+      if (!msg.success && msg.message) {
+        addLog(`Terminal input error: ${msg.message}`, 'error');
+      }
     } else if (msg.status === 'sleeping') {
       setIsAmbientAlive(false);
       addLog('Gigi is now sleeping and resting motors.', 'info');
     } else if (msg.status === 'awake') {
       setIsAmbientAlive(true);
       addLog('Gigi is awake and alive!', 'success');
+    } else if (msg.status === 'identifying') {
+      setIsAmbientAlive(true);
+      addLog(msg.message || 'Gigi is waving to identify itself!', 'success');
     } else if (msg.status === 'success' && msg.folder) {
       if (msg.folder.startsWith('custom_interaction_')) {
         setPlannedInteractionFolder(msg.folder);
@@ -784,11 +1043,14 @@ function AppContent({
       addLog(`Error: ${msg.message || msg.error}`, 'error');
       setIsLoadingScripts(false);
       setIsSavingPlan(false);
+      setIsSavingCalibration(false);
+      setIsTestingGesture(false);
+      setActiveGestureName(null);
       if (msg.requires_calibration || msg.error === 'uncalibrated') {
         setIsRobotCalibrated(false);
         Alert.alert(
           'Calibration Required',
-          'The robot motors are uncalibrated! Physical movement is locked out to prevent mechanical damage. Please run the calibration wizard first.'
+          'The robot motors are uncalibrated! Physical movement is locked out to prevent mechanical damage. Please calibrate the motors first.'
         );
       }
     } else {
@@ -833,6 +1095,55 @@ function AppContent({
 
   const handleWakeGigi = () => {
     sendRawCommand('WAKE');
+  };
+
+  const handleIdentifyGigi = () => {
+    sendRawCommand('IDENTIFY');
+  };
+
+  const handleStartWifiHotspot = (ssid?: string, password?: string) => {
+    setIsTogglingHotspot(true);
+    sendJsonCommand({ command: 'wifi_hotspot', enabled: true, ssid, password });
+  };
+
+  const handleStopWifiHotspot = () => {
+    setIsTogglingHotspot(true);
+    sendJsonCommand({ command: 'wifi_hotspot_stop', enabled: false });
+  };
+
+  const handleToggleBtSsh = (enabled: boolean) => {
+    setIsTogglingBtSsh(true);
+    sendJsonCommand({ command: 'bt_ssh', enabled });
+  };
+
+  const handleRunBtShellCommand = (cmd: string) => {
+    const trimmed = cmd.trim();
+    if (!trimmed) return;
+    setIsBtShellRunning(true);
+    setBtShellEntries((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random()}`,
+        prompt: btShellPrompt || btSshStatus?.shell_prompt || `orangepi@${btSshStatus?.bt_name || connectedBtName || 'gigi'}:~/Code/gigi$`,
+        command: trimmed,
+        output: '',
+        running: true,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    ]);
+    sendJsonCommand({ command: 'bt_shell', cmd: trimmed });
+  };
+
+  const handleSendBtShellInput = (input: string) => {
+    sendJsonCommand({ command: 'bt_shell_input', input });
+  };
+
+  const handleStopBtShellCommand = () => {
+    sendJsonCommand({ command: 'bt_shell_stop' });
+  };
+
+  const handleClearBtShell = () => {
+    setBtShellEntries([]);
   };
 
   const connectToGigi = async () => {
@@ -940,6 +1251,7 @@ function AppContent({
         fallbackQueryRef.current = setTimeout(() => {
           sendRawCommand('STATUS');
           sendRawCommand('LIST');
+          sendRawCommand('CALIB_GET');
         }, isMac ? 2200 : 800);
       } catch (e: any) {
         setConnectionStatus('disconnected');
@@ -988,7 +1300,9 @@ function AppContent({
 
           setIsLoadingScripts(true);
           setTimeout(() => {
+            sendRawCommand('STATUS');
             sendRawCommand('LIST');
+            sendRawCommand('CALIB_GET');
           }, 800);
         } else {
           setConnectionStatus('disconnected');
@@ -1017,12 +1331,21 @@ function AppContent({
       activeConnection.current = null;
     }
     setConnectionStatus('disconnected');
+    setConnectedBtName(null);
     setScripts([]);
     setSelectedScript(null);
     setIsRunning(false);
     setRunningScriptInfo(null);
     setIsLoadingScripts(false);
     setIsRobotCalibrated(null);
+    setMotorCalibration(null);
+    setCalibrationStatusInfo(null);
+    setIsSavingCalibration(false);
+    setIsTestingGesture(false);
+    setActiveGestureName(null);
+    setBtSshStatus(null);
+    setIsTogglingHotspot(false);
+    setIsTogglingBtSsh(false);
     addLog('Disconnected from Gigi.', 'info');
   };
 
@@ -1030,23 +1353,62 @@ function AppContent({
     setIsLoadingScripts(true);
     sendRawCommand('STATUS');
     sendRawCommand('LIST');
+    sendRawCommand('CALIB_GET');
   };
 
-  const handleCalibrateMotors = () => {
+  const handleFetchCalibration = () => {
+    sendJsonCommand({ command: 'calib_get' });
+  };
+
+  const handleMoveChannelPwm = (channel: number, pwm: number, joint?: MotorJointName) => {
+    sendJsonCommand({ command: 'calib_move', channel, pwm, joint });
+  };
+
+  const handleWiggleChannel = (channel: number, basePwm: number = 300) => {
+    sendJsonCommand({ command: 'calib_wiggle', channel, pwm: basePwm, delta: 20 });
+  };
+
+  const handleHomeMotors = (customMotors?: MotorCalibrationMap) => {
+    sendJsonCommand({ command: 'calib_home', motors: customMotors });
+  };
+
+  const handleReleaseMotors = () => {
+    sendJsonCommand({ command: 'calib_release' });
+  };
+
+  const handleTestGesture = (gestureName: string, customMotors?: MotorCalibrationMap) => {
+    setIsTestingGesture(true);
+    setActiveGestureName(gestureName);
+    sendJsonCommand({ command: 'calib_test_gesture', gesture: gestureName, motors: customMotors });
+  };
+
+  const handleSaveCalibration = (motors: MotorCalibrationMap) => {
+    setIsSavingCalibration(true);
+    sendJsonCommand({ command: 'calib_save', motors });
+  };
+
+  const handleRunVoiceCalibrationWizard = () => {
     Alert.alert(
-      'Motor Calibration',
-      'Run motor calibration on Gigi? Gigi will test and calibrate servo channels. Please ensure the robot has physical clearance.',
+      'Voice Calibration Wizard',
+      'Run the voice-guided motor calibration script on Gigi? Gigi will speak instructions and listen through the microphone. Please ensure the robot has physical clearance.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Start Calibration',
+          text: 'Start Voice Wizard',
           onPress: () => {
-            addLog('Requesting motor calibration wizard...', 'info');
+            addLog('Requesting voice motor calibration wizard...', 'info');
             sendRawCommand('CALIBRATE');
           },
         },
       ]
     );
+  };
+
+  const handleCalibrateMotors = () => {
+    setActiveTab('calibration');
+    if (connectionStatus === 'connected') {
+      handleFetchCalibration();
+    }
   };
 
   const handleRunScript = () => {
@@ -1258,7 +1620,14 @@ function AppContent({
     addLog(`DALL-E request queued for image: "${filename}" (${selectedImageSize})`, 'info');
 
     try {
-      const endpoint = `${AZURE_OPENAI_CONFIG.endpoint}/openai/deployments/${AZURE_OPENAI_CONFIG.dalleDeploymentName}/images/generations?api-version=2024-02-01`;
+      const isGptImage = AZURE_OPENAI_CONFIG.dalleDeploymentName.includes('gpt-image');
+      const apiVersion = isGptImage
+        ? AZURE_OPENAI_CONFIG.apiVersion || '2025-04-01-preview'
+        : '2024-02-01';
+      const imageSize = isGptImage && selectedImageSize !== '1024x1024'
+        ? '1024x1024'
+        : selectedImageSize;
+      const endpoint = `${AZURE_OPENAI_CONFIG.endpoint}/openai/deployments/${AZURE_OPENAI_CONFIG.dalleDeploymentName}/images/generations?api-version=${apiVersion}`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -1268,8 +1637,8 @@ function AppContent({
         body: JSON.stringify({
           prompt: prompt,
           n: 1,
-          size: selectedImageSize,
-          response_format: 'b64_json',
+          size: imageSize,
+          ...(!isGptImage ? { response_format: 'b64_json' } : {}),
         }),
       });
 
@@ -1339,6 +1708,7 @@ Return strictly valid JSON conforming to this structure:
   "activity_title": "String",
   "topic": "String",
   "grade_level": "String",
+  "target_audience": "String",
   "learning_goals": ["Goal 1", "Goal 2"],
   "approximate_duration": "String",
   "number_of_students": "String",
@@ -1395,6 +1765,7 @@ Return strictly valid JSON conforming to this structure:
 
       const responseData = await response.json();
       const parsedPlan = JSON.parse(responseData.choices[0].message.content);
+      parsedPlan.target_audience = parsedPlan.target_audience || parsedPlan.grade_level || '';
       imageBase64Cache.current = {};
       setCurrentPlan(parsedPlan);
       setPlannedFolder(null);
@@ -1678,11 +2049,13 @@ Conform strictly to JSON state machine specification:
                 styles.statusBadge,
                 isRobotCalibrated === true ? styles.statusBadgeCalibrated : styles.statusBadgeUncalibrated,
               ]}
-              onPress={isRobotCalibrated === false ? handleCalibrateMotors : undefined}
-              activeOpacity={isRobotCalibrated === false ? 0.7 : 1}
-              accessibilityRole={isRobotCalibrated === false ? 'button' : 'text'}
+              onPress={handleCalibrateMotors}
+              activeOpacity={0.7}
+              accessibilityRole="button"
               accessibilityLabel={
-                isRobotCalibrated === true ? 'Motors calibrated' : 'Motors uncalibrated. Tap to calibrate.'
+                isRobotCalibrated === true
+                  ? 'Motors calibrated. Tap to open Motor Calibration Studio.'
+                  : 'Motors uncalibrated. Tap to open Motor Calibration Studio.'
               }
             >
               <Text
@@ -1724,6 +2097,24 @@ Conform strictly to JSON state machine specification:
         >
           <Text style={[styles.tabButtonText, activeTab === 'activities' && styles.tabButtonTextActive]}>
             Robot Activities
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'calibration' && styles.tabButtonActive]}
+          onPress={() => {
+            setActiveTab('calibration');
+            if (connectionStatus === 'connected' && !motorCalibration) {
+              handleFetchCalibration();
+            }
+          }}
+          activeOpacity={0.8}
+          accessibilityRole="tab"
+          focusable={true}
+          accessibilityLabel="Motor Calibration Studio tab"
+          accessibilityState={{ selected: activeTab === 'calibration' }}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'calibration' && styles.tabButtonTextActive]}>
+            {isRobotCalibrated === false ? '⚠️ Motor Calibration' : '🦾 Motor Calibration'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1790,10 +2181,25 @@ Conform strictly to JSON state machine specification:
           wifiNetworks={wifiNetworks}
           isScanningWifi={isScanningWifi}
           isConnectingWifi={isConnectingWifi}
+          btSshStatus={btSshStatus}
+          isTogglingHotspot={isTogglingHotspot}
+          isTogglingBtSsh={isTogglingBtSsh}
           onScanWifi={handleScanWifi}
           onConnectWifi={handleConnectWifi}
+          onStartWifiHotspot={handleStartWifiHotspot}
+          onStopWifiHotspot={handleStopWifiHotspot}
+          onToggleBtSsh={handleToggleBtSsh}
+          btShellEntries={btShellEntries}
+          btShellPrompt={btShellPrompt}
+          isBtShellRunning={isBtShellRunning}
+          onRunBtShellCommand={handleRunBtShellCommand}
+          onSendBtShellInput={handleSendBtShellInput}
+          onStopBtShellCommand={handleStopBtShellCommand}
+          onClearBtShell={handleClearBtShell}
           onSleepGigi={handleSleepGigi}
           onWakeGigi={handleWakeGigi}
+          onIdentifyGigi={handleIdentifyGigi}
+          connectedBtName={connectedBtName}
           isAmbientAlive={isAmbientAlive}
         />
       ) : activeTab === 'activities' ? (
@@ -1814,6 +2220,24 @@ Conform strictly to JSON state machine specification:
           runningScriptInfo={runningScriptInfo}
           handleRunScript={handleRunScript}
           handleStopScript={handleStopScript}
+        />
+      ) : activeTab === 'calibration' ? (
+        <MotorCalibrationView
+          connectionStatus={connectionStatus}
+          isRobotCalibrated={isRobotCalibrated}
+          calibrationStatusInfo={calibrationStatusInfo}
+          motorCalibration={motorCalibration}
+          isSavingCalibration={isSavingCalibration}
+          isTestingGesture={isTestingGesture}
+          activeGestureName={activeGestureName}
+          onFetchCalibration={handleFetchCalibration}
+          onMoveChannelPwm={handleMoveChannelPwm}
+          onWiggleChannel={handleWiggleChannel}
+          onHomeMotors={handleHomeMotors}
+          onReleaseMotors={handleReleaseMotors}
+          onTestGesture={handleTestGesture}
+          onSaveCalibration={handleSaveCalibration}
+          onRunVoiceCalibrationWizard={handleRunVoiceCalibrationWizard}
         />
       ) : activeTab === 'planner' ? (
         <PlannerView

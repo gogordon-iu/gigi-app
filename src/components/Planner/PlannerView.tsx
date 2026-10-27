@@ -118,7 +118,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
       </View>
 
       {/* Current plan editor card */}
-      {currentPlan.activity_title ? (
+      {currentPlan?.activity_title ? (
         <>
           <View style={styles.card}>
             <View style={[styles.cardHeaderAccent, { backgroundColor: '#00FFE0' }]} />
@@ -139,7 +139,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
               <TextInput
                 style={[styles.input, { minHeight: 45, textAlignVertical: 'top' }]}
                 multiline
-                value={currentPlan.target_audience}
+                value={currentPlan.target_audience ?? currentPlan.grade_level ?? ''}
                 accessibilityLabel="Target Audience Input"
                 onChangeText={(val) => handleUpdateMeta('target_audience', val)}
               />
@@ -491,7 +491,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
           </View>
 
           {/* DALL-E image suite */}
-          {currentPlan.activity_title && getPlanImages().length > 0 && (
+          {currentPlan?.activity_title && getPlanImages().length > 0 && (
             <View style={styles.card}>
               <View style={[styles.cardHeaderAccent, { backgroundColor: '#FFD33D' }]} />
               <Text style={styles.cardSectionTitle}>C. Educational Illustrations (DALL-E 3)</Text>

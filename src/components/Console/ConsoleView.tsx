@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { styles } from '../../styles/theme';
-import { LogEntry, TransportMode, ConnectionStatus, WifiStatus, WifiNetwork } from '../../types';
+import { LogEntry, TransportMode, ConnectionStatus, WifiStatus, WifiNetwork, BtSshStatus, BtShellEntry } from '../../types';
 
 export interface ConsoleViewProps {
   connectionMode: TransportMode;
@@ -33,7 +33,22 @@ export interface ConsoleViewProps {
   onConnectWifi?: (ssid: string, password: string) => void;
   onSleepGigi?: () => void;
   onWakeGigi?: () => void;
+  onIdentifyGigi?: () => void;
+  connectedBtName?: string;
   isAmbientAlive?: boolean;
+  btSshStatus?: BtSshStatus | null;
+  isTogglingHotspot?: boolean;
+  isTogglingBtSsh?: boolean;
+  onStartWifiHotspot?: (ssid?: string, password?: string) => void;
+  onStopWifiHotspot?: () => void;
+  onToggleBtSsh?: (enabled: boolean) => void;
+  btShellEntries?: BtShellEntry[];
+  btShellPrompt?: string;
+  isBtShellRunning?: boolean;
+  onRunBtShellCommand?: (command: string) => void;
+  onSendBtShellInput?: (input: string) => void;
+  onStopBtShellCommand?: () => void;
+  onClearBtShell?: () => void;
 }
 
 export const ConsoleView: React.FC<ConsoleViewProps> = ({
@@ -60,18 +75,59 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
   onSleepGigi,
   onWakeGigi,
   isAmbientAlive,
+  btSshStatus,
+  isTogglingHotspot,
+  isTogglingBtSsh,
+  onStartWifiHotspot,
+  onStopWifiHotspot,
+  onToggleBtSsh,
+  btShellEntries = [],
+  btShellPrompt,
+  isBtShellRunning = false,
+  onRunBtShellCommand,
+  onSendBtShellInput,
+  onStopBtShellCommand,
+  onClearBtShell,
 }) => {
   const [customSsid, setCustomSsid] = useState('');
   const [customPassword, setCustomPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [copiedSSH, setCopiedSSH] = useState(false);
+  const [hotspotPassword, setHotspotPassword] = useState('gigi198420');
+  const [showHotspotPassword, setShowHotspotPassword] = useState(false);
+  const [copiedBtSSH, setCopiedBtSSH] = useState(false);
+  const [btShellInput, setBtShellInput] = useState('');
+  const [showLocalBtBridgeHelp, setShowLocalBtBridgeHelp] = useState(false);
+  const btTerminalScrollRef = useRef<any>(null);
 
-  const copyToClipboard = (text: string) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text);
+  const connectedBtName =
+    typeof selectedBtDevice?.name === 'string' ? selectedBtDevice.name : '';
+  const hotspotRouterIp = wifiStatus?.hotspot_ip || wifiStatus?.ip || '10.42.0.1';
+
+  const copyToClipboard = async (text: string, bluetooth = false) => {
+    try {
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator.clipboard ||
+        !navigator.clipboard.writeText
+      ) {
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      if (bluetooth) {
+        setCopiedBtSSH(true);
+        setTimeout(() => setCopiedBtSSH(false), 2500);
+      } else {
+        setCopiedSSH(true);
+        setTimeout(() => setCopiedSSH(false), 2500);
+      }
+    } catch {
+      if (bluetooth) {
+        setCopiedBtSSH(false);
+      } else {
+        setCopiedSSH(false);
+      }
     }
-    setCopiedSSH(true);
-    setTimeout(() => setCopiedSSH(false), 2500);
   };
   return (
     <ScrollView
@@ -445,6 +501,383 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
               >
                 <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>☀️ Wake Up</Text>
               </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* On-Demand Local Router & Bluetooth SSH Card */}
+      {connectionStatus === 'connected' && (
+        <View style={styles.card}>
+          <View style={[styles.cardHeaderAccent, { backgroundColor: '#7C3AED' }]} />
+          <Text accessibilityRole="header" aria-level={2} style={styles.cardSectionTitle}>
+            🛡️ Step 3: On-Demand Local Router & Bluetooth SSH
+          </Text>
+          <Text style={{ color: '#706B8E', fontSize: 12, lineHeight: 18, marginTop: 4 }}>
+            🔒 Disabled on wakeup for security. Initialize only after connecting via Bluetooth.
+          </Text>
+
+          {/* Local Wi-Fi Router */}
+          <View style={{ marginTop: 14 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#334155' }}>
+              Initialize Gigi's Wi-Fi Router (Local Hotspot)
+            </Text>
+            <View style={{ alignSelf: 'flex-start', backgroundColor: wifiStatus?.hotspot_active ? '#E3FAF0' : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, marginTop: 8 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: wifiStatus?.hotspot_active ? '#00875A' : '#64748B' }}>
+                {wifiStatus?.hotspot_active ? '🟢 ROUTER ACTIVE' : '⚪ ROUTER OFF'}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginTop: 10, marginBottom: 10 }}>
+              Router SSID (from Bluetooth): {connectedBtName || btSshStatus?.bt_name || 'gigi-hotspot'}
+            </Text>
+
+            <View style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>WPA2 Password (minimum 8 characters):</Text>
+                <TouchableOpacity onPress={() => setShowHotspotPassword(!showHotspotPassword)}>
+                  <Text style={{ fontSize: 11, color: '#7C3AED', fontWeight: '600' }}>
+                    {showHotspotPassword ? 'Hide Password' : 'Show Password'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                value={hotspotPassword}
+                onChangeText={setHotspotPassword}
+                placeholder="Enter at least 8 characters"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!showHotspotPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!wifiStatus?.hotspot_active && !isTogglingHotspot}
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1.5,
+                  borderColor: '#CBD5E1',
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 13,
+                  color: '#0F172A',
+                }}
+              />
+            </View>
+
+            {wifiStatus?.hotspot_active ? (
+              <>
+                <TouchableOpacity
+                  onPress={() => onStopWifiHotspot?.()}
+                  disabled={isTogglingHotspot || !onStopWifiHotspot}
+                  style={{ backgroundColor: isTogglingHotspot || !onStopWifiHotspot ? '#94A3B8' : '#DC2626', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}
+                  activeOpacity={0.85}
+                >
+                  {isTogglingHotspot && <ActivityIndicator size="small" color="#FFFFFF" />}
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>🛑 Stop Gigi's Wi-Fi Router</Text>
+                </TouchableOpacity>
+                <View style={{ marginTop: 10, backgroundColor: '#0F172A', borderRadius: 8, padding: 12, gap: 6 }}>
+                  <Text style={{ color: '#CBD5E1', fontSize: 12 }}>
+                    Hotspot SSID: {wifiStatus.hotspot_ssid || wifiStatus.ssid || connectedBtName}
+                  </Text>
+                  <Text style={{ color: '#CBD5E1', fontSize: 12 }}>
+                    Hotspot Password: {showHotspotPassword ? hotspotPassword : '••••••••'}
+                  </Text>
+                  <Text style={{ color: '#CBD5E1', fontSize: 12 }}>
+                    Robot Router IP: {hotspotRouterIp}
+                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: '#38BDF8', fontSize: 13, fontFamily: 'monospace', fontWeight: '700', flexShrink: 1 }}>
+                      ssh orangepi@{hotspotRouterIp}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => copyToClipboard(`ssh orangepi@${hotspotRouterIp}`)}
+                      style={{ backgroundColor: copiedSSH ? '#059669' : '#334155', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, marginLeft: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                        {copiedSSH ? '✓ Copied' : '📋 Copy'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  if (hotspotPassword.length >= 8 && !isTogglingHotspot) {
+                    onStartWifiHotspot?.(connectedBtName || btSshStatus?.bt_name || undefined, hotspotPassword);
+                  }
+                }}
+                disabled={hotspotPassword.length < 8 || isTogglingHotspot || !onStartWifiHotspot}
+                style={{
+                  backgroundColor: hotspotPassword.length < 8 || isTogglingHotspot || !onStartWifiHotspot ? '#94A3B8' : '#7C3AED',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 8,
+                }}
+                activeOpacity={0.85}
+              >
+                {isTogglingHotspot && <ActivityIndicator size="small" color="#FFFFFF" />}
+                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>📡 Initialize Gigi's Wi-Fi Router</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Bluetooth SSH */}
+          <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#334155' }}>
+              Enable SSH over Bluetooth
+            </Text>
+            <View style={{ alignSelf: 'flex-start', backgroundColor: btSshStatus?.enabled ? '#E3FAF0' : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, marginTop: 8 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: btSshStatus?.enabled ? '#00875A' : '#64748B' }}>
+                {btSshStatus?.enabled
+                  ? `🟢 BT SSH ENABLED (CH ${btSshStatus?.channel || 2})`
+                  : '⚪ BT SSH DISABLED'}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginTop: 10, marginBottom: 12 }}>
+              Opens an interactive Linux terminal to Gigi directly inside this browser over Bluetooth (works on Mac & Windows with zero Python setup) while keeping your computer's Wi-Fi/internet active.
+            </Text>
+            <TouchableOpacity
+              onPress={() => onToggleBtSsh?.(!btSshStatus?.enabled)}
+              disabled={isTogglingBtSsh || !onToggleBtSsh}
+              style={{
+                backgroundColor: isTogglingBtSsh || !onToggleBtSsh ? '#94A3B8' : btSshStatus?.enabled ? '#DC2626' : '#7C3AED',
+                borderRadius: 10,
+                paddingVertical: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'row',
+                gap: 8,
+              }}
+              activeOpacity={0.85}
+            >
+              {isTogglingBtSsh && <ActivityIndicator size="small" color="#FFFFFF" />}
+              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                {btSshStatus?.enabled ? '🛑 Disable SSH over Bluetooth' : '🔵 Enable SSH over Bluetooth'}
+              </Text>
+            </TouchableOpacity>
+
+            {btSshStatus?.enabled && (
+              <View style={{ marginTop: 12, backgroundColor: '#0B1120', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#1E293B', gap: 10 }}>
+                {/* Terminal Header */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '800' }}>
+                      💻 Browser Bluetooth SSH Terminal
+                    </Text>
+                    <View style={{ backgroundColor: isBtShellRunning ? '#FEF3C7' : '#064E3B', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
+                      <Text style={{ color: isBtShellRunning ? '#D97706' : '#34D399', fontSize: 10, fontWeight: '700' }}>
+                        {isBtShellRunning ? '⏳ RUNNING' : '● READY'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {isBtShellRunning && onStopBtShellCommand && (
+                      <TouchableOpacity
+                        onPress={onStopBtShellCommand}
+                        style={{ backgroundColor: '#DC2626', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>🛑 Ctrl+C</Text>
+                      </TouchableOpacity>
+                    )}
+                    {onClearBtShell && (
+                      <TouchableOpacity
+                        onPress={onClearBtShell}
+                        style={{ backgroundColor: '#1E293B', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ color: '#CBD5E1', fontSize: 11, fontWeight: '600' }}>Clear</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                {/* Quick Command Chips */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    { label: '📂 ls -la', cmd: 'pwd && ls -la' },
+                    { label: '🌿 git status', cmd: 'git status -sb' },
+                    { label: '⬇️ git pull', cmd: 'git pull' },
+                    { label: '💾 df -h', cmd: 'df -h /' },
+                    { label: '🤖 bt service', cmd: 'systemctl status gigi-bluetooth --no-pager -n 12' },
+                    { label: '🌐 ip addr', cmd: 'ip -br addr' },
+                  ].map((chip) => (
+                    <TouchableOpacity
+                      key={chip.label}
+                      disabled={isBtShellRunning}
+                      onPress={() => onRunBtShellCommand?.(chip.cmd)}
+                      style={{
+                        backgroundColor: isBtShellRunning ? '#1E293B' : '#1E1B4B',
+                        borderColor: '#4338CA',
+                        borderWidth: 1,
+                        paddingHorizontal: 9,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                        opacity: isBtShellRunning ? 0.5 : 1,
+                      }}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={{ color: '#A5B4FC', fontSize: 11, fontFamily: 'monospace', fontWeight: '600' }}>
+                        {chip.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Terminal Output Window */}
+                <ScrollView
+                  ref={btTerminalScrollRef}
+                  onContentSizeChange={() => btTerminalScrollRef.current?.scrollToEnd?.({ animated: true })}
+                  style={{
+                    backgroundColor: '#020617',
+                    borderRadius: 8,
+                    padding: 10,
+                    maxHeight: 280,
+                    minHeight: 130,
+                    borderWidth: 1,
+                    borderColor: '#1E293B',
+                  }}
+                >
+                  {btShellEntries.length === 0 ? (
+                    <Text style={{ color: '#64748B', fontSize: 12, fontFamily: 'monospace', lineHeight: 18 }}>
+                      Connected to {btSshStatus?.bt_name || connectedBtName || 'gigi'} over Bluetooth.{'\n'}
+                      Type any Linux command below (e.g. ls, cd, git pull, sudo systemctl ...) and press Enter.
+                    </Text>
+                  ) : (
+                    btShellEntries.map((entry) => (
+                      <View key={entry.id} style={{ marginBottom: 10 }}>
+                        <Text selectable style={{ color: '#38BDF8', fontSize: 12, fontFamily: 'monospace', fontWeight: '700' }}>
+                          {entry.prompt || btShellPrompt || `orangepi@${btSshStatus?.bt_name || connectedBtName || 'gigi'}:~/Code/gigi$`} {entry.command}
+                        </Text>
+                        {entry.output ? (
+                          <Text selectable style={{ color: '#E2E8F0', fontSize: 12, fontFamily: 'monospace', lineHeight: 18, marginTop: 2 }}>
+                            {entry.output}
+                          </Text>
+                        ) : null}
+                        {entry.error ? (
+                          <Text selectable style={{ color: '#F87171', fontSize: 12, fontFamily: 'monospace', marginTop: 2 }}>
+                            {entry.error}
+                          </Text>
+                        ) : null}
+                        {!entry.running && typeof entry.returncode === 'number' && entry.returncode !== 0 ? (
+                          <Text style={{ color: '#FBBF24', fontSize: 11, fontFamily: 'monospace', marginTop: 2 }}>
+                            [exit code: {entry.returncode}]
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+
+                {/* Interactive Command Input */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#020617', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#334155' }}>
+                  <Text style={{ color: isBtShellRunning ? '#FBBF24' : '#34D399', fontSize: 12, fontFamily: 'monospace', fontWeight: '700' }}>
+                    {isBtShellRunning
+                      ? 'stdin >'
+                      : btShellPrompt || btSshStatus?.shell_prompt || `orangepi@${btSshStatus?.bt_name || connectedBtName || 'gigi'}:~/Code/gigi$`}
+                  </Text>
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      color: '#F8FAFC',
+                      fontSize: 13,
+                      fontFamily: 'monospace',
+                      paddingVertical: 6,
+                      outlineStyle: 'none' as any,
+                    }}
+                    placeholder={isBtShellRunning ? 'Send input to running command...' : 'Type a shell command (ls, cd, git pull, sudo ...)'}
+                    placeholderTextColor="#475569"
+                    value={btShellInput}
+                    onChangeText={setBtShellInput}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onSubmitEditing={() => {
+                      const trimmed = btShellInput.trim();
+                      if (!trimmed) return;
+                      if (isBtShellRunning) {
+                        onSendBtShellInput?.(btShellInput);
+                      } else if (trimmed === 'clear' || trimmed === 'cls') {
+                        onClearBtShell?.();
+                      } else {
+                        onRunBtShellCommand?.(trimmed);
+                      }
+                      setBtShellInput('');
+                    }}
+                  />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const trimmed = btShellInput.trim();
+                      if (!trimmed) return;
+                      if (isBtShellRunning) {
+                        onSendBtShellInput?.(btShellInput);
+                      } else if (trimmed === 'clear' || trimmed === 'cls') {
+                        onClearBtShell?.();
+                      } else {
+                        onRunBtShellCommand?.(trimmed);
+                      }
+                      setBtShellInput('');
+                    }}
+                    style={{
+                      backgroundColor: isBtShellRunning ? '#D97706' : '#2563EB',
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                      borderRadius: 6,
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                      {isBtShellRunning ? 'Send ↵' : 'Run ↵'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Optional Local Port-Forwarding Toggle */}
+                <TouchableOpacity
+                  onPress={() => setShowLocalBtBridgeHelp(!showLocalBtBridgeHelp)}
+                  style={{ paddingTop: 4 }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: '600' }}>
+                    {showLocalBtBridgeHelp ? '▼' : '▶'} Advanced: Use external SSH client on port 2222 (requires local Python)
+                  </Text>
+                </TouchableOpacity>
+
+                {showLocalBtBridgeHelp && (
+                  <View style={{ backgroundColor: '#1E293B', borderRadius: 8, padding: 10, gap: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#38BDF8', fontSize: 12, fontFamily: 'monospace', fontWeight: '700', flexShrink: 1 }}>
+                        python tools/bt_ssh.py --name {btSshStatus?.bt_name || connectedBtName || 'gigi'}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => copyToClipboard(`python tools/bt_ssh.py --name ${btSshStatus?.bt_name || connectedBtName || 'gigi'}`, true)}
+                        style={{ backgroundColor: copiedBtSSH ? '#059669' : '#334155', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, marginLeft: 8 }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                          {copiedBtSSH ? '✓ Copied' : '📋 Copy'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#38BDF8', fontSize: 12, fontFamily: 'monospace', fontWeight: '700', flexShrink: 1 }}>
+                        ssh -p 2222 orangepi@127.0.0.1
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => copyToClipboard('ssh -p 2222 orangepi@127.0.0.1', true)}
+                        style={{ backgroundColor: copiedBtSSH ? '#059669' : '#334155', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, marginLeft: 8 }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                          {copiedBtSSH ? '✓ Copied' : '📋 Copy'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
             )}
           </View>
         </View>

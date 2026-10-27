@@ -39,7 +39,34 @@ export interface IssuedToken {
 
 export type UserRole = 'admin' | 'user' | null;
 
-export type ActiveTab = 'console' | 'activities' | 'planner' | 'interaction' | 'manager';
+export type ActiveTab = 'console' | 'activities' | 'calibration' | 'planner' | 'interaction' | 'manager';
+
+export type MotorJointName =
+  | 'neck'
+  | 'torso'
+  | 'left_shoulder'
+  | 'right_shoulder'
+  | 'left_elbow'
+  | 'right_elbow';
+
+export interface MotorJointConfig {
+  channel: number;
+  min: number;
+  max: number;
+  center: number;
+  calibrated: boolean;
+  direction?: string;
+}
+
+export type MotorCalibrationMap = Record<MotorJointName, MotorJointConfig>;
+
+export interface CalibrationStatusInfo {
+  calibrated: boolean;
+  reason?: string;
+  local_file_exists?: boolean;
+  active_path?: string | null;
+  calibrated_at?: string | null;
+}
 
 export type TransportMode = 'serial' | 'bluetooth' | 'websocket';
 
@@ -86,6 +113,11 @@ export interface WifiStatus {
   ssid: string;
   ip: string;
   hostname?: string;
+  hotspot_active?: boolean;
+  hotspot_ssid?: string;
+  hotspot_ip?: string;
+  hotspot_password?: string;
+  ssh_command?: string;
 }
 
 export interface WifiNetwork {
@@ -94,3 +126,25 @@ export interface WifiNetwork {
   security: string;
 }
 
+export interface BtSshStatus {
+  enabled: boolean;
+  channel?: number;
+  active_sessions?: number;
+  bt_name?: string;
+  bt_mac?: string;
+  ssh_command?: string;
+  shell_cwd?: string;
+  shell_prompt?: string;
+  shell_running?: boolean;
+}
+
+export interface BtShellEntry {
+  id: string;
+  prompt: string;
+  command: string;
+  output: string;
+  returncode?: number | null;
+  running?: boolean;
+  error?: string;
+  timestamp: string;
+}
