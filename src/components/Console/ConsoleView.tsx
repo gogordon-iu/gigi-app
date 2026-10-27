@@ -659,13 +659,12 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
               </Text>
             </TouchableOpacity>
 
-            {btSshStatus?.enabled && (
-              <View style={{ marginTop: 12, backgroundColor: '#0B1120', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#1E293B', gap: 10 }}>
+            <View style={{ marginTop: 12, backgroundColor: '#0B1120', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#1E293B', gap: 10 }}>
                 {/* Terminal Header */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '800' }}>
-                      💻 Browser Bluetooth SSH Terminal
+                      💻 Browser Bluetooth Linux Terminal
                     </Text>
                     <View style={{ backgroundColor: isBtShellRunning ? '#FEF3C7' : '#064E3B', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
                       <Text style={{ color: isBtShellRunning ? '#D97706' : '#34D399', fontSize: 10, fontWeight: '700' }}>
@@ -878,7 +877,6 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
                   </View>
                 )}
               </View>
-            )}
           </View>
         </View>
       )}
