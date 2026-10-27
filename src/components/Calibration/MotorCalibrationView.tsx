@@ -6,6 +6,7 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { styles } from '../../styles/theme';
 import {
@@ -169,6 +170,7 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
     (motorCalibration || DEFAULT_MOTOR_CALIBRATION_MAP).neck?.channel ?? 1
   );
   const [showChannelScanner, setShowChannelScanner] = useState<boolean>(false);
+  const [showWiringGuide, setShowWiringGuide] = useState<boolean>(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
 
   useEffect(() => {
@@ -289,6 +291,189 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
   });
   const duplicateChannels = Object.entries(channelOwners).filter(([, owners]) => owners.length > 1);
 
+  const renderHardwareWiringReference = () => (
+    <View
+      style={{
+        backgroundColor: '#F8FAFC',
+        borderRadius: 12,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        gap: 12,
+      }}
+    >
+      <View>
+        <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>
+          🔌 Hardware Assembly & I2C Circuit Reference (Orange Pi 5 Pro ↔ PCA9685)
+        </Text>
+        <Text style={{ fontSize: 12, color: '#475569', marginTop: 4, lineHeight: 18 }}>
+          Verify this 4-wire I2C connection between the Orange Pi 5 Pro 40-pin GPIO header (left, near the antenna and Cdtech 20U5622 wireless module) and the PCA9685 16-Channel 12-bit PWM Servo Driver (right) before calibrating motors.
+        </Text>
+      </View>
+
+      {/* Circuit Photo */}
+      <View
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: 12,
+          padding: 8,
+          borderWidth: 1,
+          borderColor: '#E2E8F0',
+          alignItems: 'center',
+        }}
+      >
+        <Image
+          source={{ uri: './Assm_CIRCUIT.jpg' }}
+          accessibilityLabel="Orange Pi 5 Pro to PCA9685 I2C wiring circuit diagram"
+          style={{
+            width: '100%',
+            maxWidth: 680,
+            height: 360,
+            borderRadius: 8,
+          }}
+          resizeMode="contain"
+        />
+        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 6, fontWeight: '600' }}>
+          Figure: Assm_CIRCUIT.jpg — Orange Pi 5 Pro GPIO Pins 1, 3, 5, 6 wired to PCA9685 VCC, SDA, SCL, and GND
+        </Text>
+      </View>
+
+      {/* 4-Wire I2C Pinout Mapping Table */}
+      <View
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: '#E2E8F0',
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            backgroundColor: '#F1F5F9',
+            paddingVertical: 8,
+            paddingHorizontal: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: '#E2E8F0',
+          }}
+        >
+          <Text style={{ flex: 1.1, fontSize: 11, fontWeight: '800', color: '#334155' }}>WIRE</Text>
+          <Text style={{ flex: 1.6, fontSize: 11, fontWeight: '800', color: '#334155' }}>ORANGE PI 5 PRO</Text>
+          <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '800', color: '#334155' }}>PCA9685 PIN</Text>
+          <Text style={{ flex: 2.5, fontSize: 11, fontWeight: '800', color: '#334155' }}>FUNCTION & NOTES</Text>
+        </View>
+
+        {[
+          {
+            wire: '🔴 Red',
+            wireColor: '#DC2626',
+            opiPin: 'Pin 1 (VCC 3.3V)',
+            pcaPin: 'VCC',
+            desc: '3.3V logic power for the PCA9685 chip and its onboard SDA/SCL pull-up resistors (WARNING: connect strictly to 3.3V Pin 1, never 5V, so I2C pull-ups do not exceed the Orange Pi 3.3V GPIO limit).',
+          },
+          {
+            wire: '🟢 Green',
+            wireColor: '#16A34A',
+            opiPin: 'Pin 3 (SDA / I2C)',
+            pcaPin: 'SDA',
+            desc: 'Bidirectional I2C Data line to PCA9685 (default I2C bus address 0x40).',
+          },
+          {
+            wire: '🟡 Yellow',
+            wireColor: '#CA8A04',
+            opiPin: 'Pin 5 (SCL / I2C)',
+            pcaPin: 'SCL',
+            desc: 'I2C Clock line synchronizing 50 Hz PWM register updates (ticks 50–600).',
+          },
+          {
+            wire: '⚫ Black',
+            wireColor: '#0F172A',
+            opiPin: 'Pin 6 (GND)',
+            pcaPin: 'GND',
+            desc: 'Common signal ground reference between Orange Pi 5 Pro (3rd row, right pin) and PCA9685.',
+          },
+        ].map((row, i) => (
+          <View
+            key={row.pcaPin}
+            style={{
+              flexDirection: 'row',
+              paddingVertical: 8,
+              paddingHorizontal: 10,
+              borderBottomWidth: i < 3 ? 1 : 0,
+              borderBottomColor: '#F1F5F9',
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ flex: 1.1, fontSize: 12, fontWeight: '800', color: row.wireColor }}>{row.wire}</Text>
+            <Text style={{ flex: 1.6, fontSize: 12, fontWeight: '700', color: '#1E293B', fontFamily: 'monospace' }}>
+              {row.opiPin}
+            </Text>
+            <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '800', color: '#5E43F3', fontFamily: 'monospace' }}>
+              {row.pcaPin}
+            </Text>
+            <Text style={{ flex: 2.5, fontSize: 11, color: '#475569', lineHeight: 16 }}>{row.desc}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Servo 3-Pin Output Header & Unconnected Pins Explanation */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        <View
+          style={{
+            flex: 1,
+            minWidth: 240,
+            backgroundColor: '#FFFFFF',
+            borderRadius: 10,
+            padding: 12,
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            gap: 4,
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '800', color: '#1E293B', marginBottom: 2 }}>
+            🦾 3-Row Servo Output Headers (Channels 0–15, Bottom Right):
+          </Text>
+          <Text style={{ fontSize: 11, color: '#475569', lineHeight: 16 }}>
+            • <Text style={{ fontWeight: '800', color: '#CA8A04' }}>Top Row (Yellow Pin):</Text> PWM Signal wire (Orange/Yellow/White on servo plug).
+          </Text>
+          <Text style={{ fontSize: 11, color: '#475569', lineHeight: 16 }}>
+            • <Text style={{ fontWeight: '800', color: '#DC2626' }}>Middle Row (Red Pin):</Text> V+ External 5V–6V Servo Power rail (Red wire on servo plug).
+          </Text>
+          <Text style={{ fontSize: 11, color: '#475569', lineHeight: 16 }}>
+            • <Text style={{ fontWeight: '800', color: '#0F172A' }}>Bottom Row (Black Pin):</Text> Ground rail (Brown/Black wire on servo plug).
+          </Text>
+        </View>
+
+        <View
+          style={{
+            flex: 1,
+            minWidth: 240,
+            backgroundColor: '#FFFFFF',
+            borderRadius: 10,
+            padding: 12,
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            gap: 4,
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '800', color: '#1E293B', marginBottom: 2 }}>
+            ℹ️ Unconnected Side Pins & Default Channel Map:
+          </Text>
+          <Text style={{ fontSize: 11, color: '#475569', lineHeight: 16 }}>
+            • <Text style={{ fontWeight: '700', color: '#334155' }}>OE (Output Enable):</Text> Left unconnected (internal pull-down keeps outputs enabled by default).
+          </Text>
+          <Text style={{ fontSize: 11, color: '#475569', lineHeight: 16 }}>
+            • <Text style={{ fontWeight: '700', color: '#334155' }}>Side V+ Pin:</Text> Left unconnected when 5V–6V servo power is supplied via the top screw terminal.
+          </Text>
+          <Text style={{ fontSize: 11, color: '#475569', lineHeight: 16 }}>
+            • <Text style={{ fontWeight: '700', color: '#5E43F3' }}>Standard Channels:</Text> CH 0 = Torso, CH 1 = Neck, CH 2/7 = Left Shoulder, CH 3 = Right Shoulder, CH 14/2 = Right Elbow, CH 15/6 = Left Elbow.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
   if (connectionStatus !== 'connected') {
     return (
       <ScrollView
@@ -308,6 +493,11 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
               Please connect to Gigi via Bluetooth in the "Chat & Manual Control" tab first to jog servos, discover channels, and save motor calibration.
             </Text>
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={[styles.cardHeaderAccent, { backgroundColor: '#0284C7' }]} />
+          {renderHardwareWiringReference()}
         </View>
       </ScrollView>
     );
@@ -499,23 +689,47 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
           <Text accessibilityRole="header" aria-level={2} style={[styles.cardSectionTitle, { marginBottom: 0 }]}>
             1. Select Joint to Calibrate
           </Text>
-          <TouchableOpacity
-            onPress={() => setShowChannelScanner(!showChannelScanner)}
-            style={{
-              backgroundColor: showChannelScanner ? '#EDE9FE' : '#F8FAFC',
-              borderWidth: 1,
-              borderColor: showChannelScanner ? '#5E43F3' : '#CBD5E1',
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 8,
-            }}
-            activeOpacity={0.75}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '700', color: showChannelScanner ? '#5E43F3' : '#334155' }}>
-              {showChannelScanner ? '🔼 Hide 16-Channel Finder' : '🔍 Open 16-Channel Wiring Finder'}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => setShowWiringGuide(!showWiringGuide)}
+              style={{
+                backgroundColor: showWiringGuide ? '#E0F2FE' : '#F8FAFC',
+                borderWidth: 1,
+                borderColor: showWiringGuide ? '#0284C7' : '#CBD5E1',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: showWiringGuide ? '#0369A1' : '#334155' }}>
+                {showWiringGuide ? '🔼 Hide Circuit Wiring Diagram' : '🔌 View Circuit & I2C Pinout (Assm_CIRCUIT)'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowChannelScanner(!showChannelScanner)}
+              style={{
+                backgroundColor: showChannelScanner ? '#EDE9FE' : '#F8FAFC',
+                borderWidth: 1,
+                borderColor: showChannelScanner ? '#5E43F3' : '#CBD5E1',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: showChannelScanner ? '#5E43F3' : '#334155' }}>
+                {showChannelScanner ? '🔼 Hide 16-Channel Finder' : '🔍 Open 16-Channel Wiring Finder'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {showWiringGuide && (
+          <View style={{ marginBottom: 16 }}>
+            {renderHardwareWiringReference()}
+          </View>
+        )}
 
         {/* Optional 16-Channel Wiggle Scanner */}
         {showChannelScanner && (
