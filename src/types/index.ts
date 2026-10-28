@@ -79,10 +79,18 @@ export interface ChannelScanRecord {
   suggested_joint?: MotorJointName | null;
 }
 
+export interface ArmPairInfo {
+  side: 'left' | 'right';
+  shoulder: number;
+  elbow: number;
+  side_source?: string;
+}
+
 export interface ChannelScanResult {
   active_channels: number[];
   channels: ChannelScanRecord[];
   suggested_assignments: Partial<Record<MotorJointName, number>>;
+  arm_pairs?: ArmPairInfo[];
   message?: string;
 }
 

@@ -242,6 +242,23 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
     });
   };
 
+  const handleSwapLeftRightArms = () => {
+    setHasUnsavedChanges(true);
+    setDraftMotors((prev) => {
+      const leftSh = prev.left_shoulder || DEFAULT_MOTOR_CALIBRATION_MAP.left_shoulder;
+      const rightSh = prev.right_shoulder || DEFAULT_MOTOR_CALIBRATION_MAP.right_shoulder;
+      const leftEl = prev.left_elbow || DEFAULT_MOTOR_CALIBRATION_MAP.left_elbow;
+      const rightEl = prev.right_elbow || DEFAULT_MOTOR_CALIBRATION_MAP.right_elbow;
+      return {
+        ...prev,
+        left_shoulder: { ...leftSh, channel: rightSh.channel },
+        right_shoulder: { ...rightSh, channel: leftSh.channel },
+        left_elbow: { ...leftEl, channel: rightEl.channel },
+        right_elbow: { ...rightEl, channel: leftEl.channel },
+      };
+    });
+  };
+
   const clampPwm = (val: number) => Math.max(50, Math.min(600, Math.round(val)));
 
   const updateJointField = (joint: MotorJointName, patch: Partial<MotorJointConfig>) => {
@@ -577,6 +594,24 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
               </TouchableOpacity>
             )}
             <TouchableOpacity
+              onPress={handleSwapLeftRightArms}
+              style={{
+                backgroundColor: '#F0FDF4',
+                borderWidth: 1,
+                borderColor: '#86EFAC',
+                paddingHorizontal: 11,
+                paddingVertical: 6,
+                borderRadius: 8,
+              }}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="Swap Left and Right arms while keeping each shoulder paired with its same-side elbow"
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#166534' }}>
+                ⇄ Swap L↔R Arms (Paired)
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => setShowChannelScanner(!showChannelScanner)}
               style={{
                 backgroundColor: showChannelScanner ? '#EDE9FE' : '#F8FAFC',
@@ -636,29 +671,62 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
                     </Text>
                     {Object.keys(channelScanResult.suggested_assignments || {}).length > 0 && (
                       <Text style={{ fontSize: 11, color: '#047857', marginTop: 2 }}>
-                        Suggested by Torso camera pan magnitude:{' '}
+                        Suggested by Torso camera optical flow & arm recoil coupling:{' '}
                         {Object.entries(channelScanResult.suggested_assignments)
                           .map(([j, c]) => `${j} → CH ${c}`)
                           .join(' • ')}
                       </Text>
                     )}
+                    {channelScanResult.arm_pairs && channelScanResult.arm_pairs.length > 0 && (
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#065F46', marginTop: 3 }}>
+                        🔗 Paired Same-Side Arms (Shoulder + Elbow):{' '}
+                        {channelScanResult.arm_pairs
+                          .filter(
+                            (p): p is NonNullable<typeof p> =>
+                              Boolean(p && typeof p.shoulder === 'number' && typeof p.elbow === 'number')
+                          )
+                          .map(
+                            (p) =>
+                              `${p.side === 'right' ? 'Right Arm' : 'Left Arm'} [Shoulder CH ${p.shoulder} + Elbow CH ${p.elbow}]`
+                          )
+                          .join(' • ')}
+                      </Text>
+                    )}
                   </View>
-                  {Object.keys(channelScanResult.suggested_assignments || {}).length > 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {Object.keys(channelScanResult.suggested_assignments || {}).length > 0 && (
+                      <TouchableOpacity
+                        onPress={handleApplySuggestedChannels}
+                        style={{
+                          backgroundColor: '#059669',
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                          borderRadius: 8,
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
+                          ✨ Apply Suggested Channels (Editable)
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
-                      onPress={handleApplySuggestedChannels}
+                      onPress={handleSwapLeftRightArms}
                       style={{
-                        backgroundColor: '#059669',
-                        paddingHorizontal: 12,
+                        backgroundColor: '#FFFFFF',
+                        borderWidth: 1,
+                        borderColor: '#059669',
+                        paddingHorizontal: 11,
                         paddingVertical: 7,
                         borderRadius: 8,
                       }}
                       activeOpacity={0.8}
                     >
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
-                        ✨ Apply Suggested Channels (Editable)
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#065F46' }}>
+                        ⇄ Swap Left ↔ Right Arms (Keep Paired)
                       </Text>
                     </TouchableOpacity>
-                  )}
+                  </View>
                 </View>
               </View>
             )}

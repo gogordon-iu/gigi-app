@@ -712,6 +712,25 @@ function AppContent({
           msg.suggested_assignments && typeof msg.suggested_assignments === 'object'
             ? msg.suggested_assignments
             : {},
+        arm_pairs: Array.isArray(msg.arm_pairs)
+
+          ? msg.arm_pairs.filter(
+
+              (p: any) =>
+
+                p &&
+
+                typeof p === 'object' &&
+
+                (p.side === 'left' || p.side === 'right') &&
+
+                typeof p.shoulder === 'number' &&
+
+                typeof p.elbow === 'number'
+
+            )
+
+          : undefined,
         message: msg.message,
       };
       setChannelScanResult(scanRes);
