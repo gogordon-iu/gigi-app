@@ -278,6 +278,24 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
     commandJointPwm(mid);
   };
 
+  const handleConfirmSave = () => {
+    const nextMap: MotorCalibrationMap = { ...draftMotors };
+    JOINT_METADATA.forEach((meta) => {
+      const existing = nextMap[meta.key] || DEFAULT_MOTOR_CALIBRATION_MAP[meta.key];
+      const normalized = normalizeJointLimits(existing.min, existing.center, existing.max);
+      const isDummy = normalized.min === 290 && normalized.max === 310;
+      nextMap[meta.key] = {
+        ...existing,
+        ...normalized,
+        calibrated: Boolean(existing.calibrated && !isDummy),
+        direction: existing.direction || meta.defaultDirection,
+      };
+    });
+    setDraftMotors(nextMap);
+    setHasUnsavedChanges(false);
+    onSaveCalibration(nextMap);
+  };
+
   // Channel collision detector
   const channelOwners: Record<number, string[]> = {};
   JOINT_METADATA.forEach((meta) => {
@@ -447,9 +465,7 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
           </View>
 
           <TouchableOpacity
-            onPress={() => {
-              onSaveCalibration(draftMotors);
-            }}
+            onPress={handleConfirmSave}
             disabled={isSavingCalibration}
             style={{
               backgroundColor: isSavingCalibration ? '#94A3B8' : '#00875A',
@@ -750,6 +766,33 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
               activeOpacity={0.75}
             >
               <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>〰️ Wiggle Joint</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                updateJointField(selectedJoint, {
+                  calibrated: !currentConfig.calibrated,
+                })
+              }
+              style={{
+                backgroundColor: currentConfig.calibrated ? '#E3FAF0' : '#FFF4E5',
+                borderWidth: 1,
+                borderColor: currentConfig.calibrated ? '#A3EAD0' : '#FFD8B3',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+              }}
+              activeOpacity={0.75}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: currentConfig.calibrated ? '#00875A' : '#D97706',
+                }}
+              >
+                {currentConfig.calibrated ? '✅ Joint Verified' : '☑️ Mark Verified'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1247,9 +1290,7 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
         {/* Bottom Action Row: Save Profile or Run Legacy Voice Wizard */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
           <TouchableOpacity
-            onPress={() => {
-              onSaveCalibration(draftMotors);
-            }}
+            onPress={handleConfirmSave}
             disabled={isSavingCalibration}
             style={{
               flex: 2,
