@@ -14,6 +14,7 @@ import {
   MotorJointConfig,
   MotorCalibrationMap,
   CalibrationStatusInfo,
+  ChannelScanResult,
 } from '../../types';
 
 export interface MotorCalibrationViewProps {
@@ -24,9 +25,13 @@ export interface MotorCalibrationViewProps {
   isSavingCalibration: boolean;
   isTestingGesture: boolean;
   activeGestureName: string | null;
+  isScanningChannels?: boolean;
+  scanProgressChannel?: number | null;
+  channelScanResult?: ChannelScanResult | null;
   onFetchCalibration: () => void;
   onMoveChannelPwm: (channel: number, pwm: number, joint?: MotorJointName) => void;
   onWiggleChannel: (channel: number, basePwm?: number) => void;
+  onScanChannels?: () => void;
   onHomeMotors: (customMotors?: MotorCalibrationMap) => void;
   onReleaseMotors: () => void;
   onTestGesture: (gestureName: string, customMotors?: MotorCalibrationMap) => void;
@@ -141,9 +146,13 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
   isSavingCalibration,
   isTestingGesture,
   activeGestureName,
+  isScanningChannels = false,
+  scanProgressChannel = null,
+  channelScanResult = null,
   onFetchCalibration,
   onMoveChannelPwm,
   onWiggleChannel,
+  onScanChannels,
   onHomeMotors,
   onReleaseMotors,
   onTestGesture,
@@ -203,10 +212,35 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
   const currentPwm = livePwmByJoint[selectedJoint] ?? currentConfig.center ?? 300;
 
   useEffect(() => {
+    if (channelScanResult && channelScanResult.active_channels.length > 0) {
+      setShowChannelScanner(true);
+    }
+  }, [channelScanResult]);
+
+  useEffect(() => {
     const targetPwm = livePwmByJoint[selectedJoint] ?? currentConfig.center ?? 300;
     setManualPwmInput(String(targetPwm));
     setProbeChannel(currentConfig.channel);
   }, [selectedJoint, currentConfig.channel, currentConfig.center, livePwmByJoint]);
+
+  const handleApplySuggestedChannels = () => {
+    if (!channelScanResult?.suggested_assignments) return;
+    setHasUnsavedChanges(true);
+    setDraftMotors((prev) => {
+      const next = { ...prev };
+      (Object.keys(channelScanResult.suggested_assignments) as MotorJointName[]).forEach((jKey) => {
+        const suggestedCh = channelScanResult.suggested_assignments[jKey];
+        if (typeof suggestedCh === 'number' && suggestedCh >= 0 && suggestedCh <= 15) {
+          const existing = next[jKey] || DEFAULT_MOTOR_CALIBRATION_MAP[jKey];
+          next[jKey] = {
+            ...existing,
+            channel: suggestedCh,
+          };
+        }
+      });
+      return next;
+    });
+  };
 
   const clampPwm = (val: number) => Math.max(50, Math.min(600, Math.round(val)));
 
@@ -515,22 +549,50 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
           <Text accessibilityRole="header" aria-level={2} style={[styles.cardSectionTitle, { marginBottom: 0 }]}>
             1. Select Joint to Calibrate
           </Text>
-          <TouchableOpacity
-            onPress={() => setShowChannelScanner(!showChannelScanner)}
-            style={{
-              backgroundColor: showChannelScanner ? '#EDE9FE' : '#F8FAFC',
-              borderWidth: 1,
-              borderColor: showChannelScanner ? '#5E43F3' : '#CBD5E1',
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 8,
-            }}
-            activeOpacity={0.75}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '700', color: showChannelScanner ? '#5E43F3' : '#334155' }}>
-              {showChannelScanner ? '🔼 Hide 16-Channel Finder' : '🔍 Open 16-Channel Wiring Finder'}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {onScanChannels && (
+              <TouchableOpacity
+                onPress={() => {
+                  setShowChannelScanner(true);
+                  onScanChannels();
+                }}
+                disabled={isScanningChannels || isTestingGesture || isSavingCalibration}
+                style={{
+                  backgroundColor: isScanningChannels ? '#94A3B8' : '#0284C7',
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                activeOpacity={0.8}
+              >
+                {isScanningChannels && <ActivityIndicator size="small" color="#FFF" />}
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>
+                  {isScanningChannels
+                    ? `⏳ Scanning CH ${scanProgressChannel ?? 0}/16...`
+                    : '⚡ Auto-Detect Active Channels'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => setShowChannelScanner(!showChannelScanner)}
+              style={{
+                backgroundColor: showChannelScanner ? '#EDE9FE' : '#F8FAFC',
+                borderWidth: 1,
+                borderColor: showChannelScanner ? '#5E43F3' : '#CBD5E1',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: showChannelScanner ? '#5E43F3' : '#334155' }}>
+                {showChannelScanner ? '🔼 Hide 16-Channel Finder' : '🔍 Open 16-Channel Wiring Finder'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Optional 16-Channel Wiggle Scanner */}
@@ -546,18 +608,71 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
             }}
           >
             <Text style={{ fontSize: 13, fontWeight: '800', color: '#1E293B', marginBottom: 4 }}>
-              🔍 PCA9685 16-Channel Wiggle Scanner (Unsure which wire goes where?)
+              🔍 PCA9685 16-Channel Wiggle & Auto-Detection Scanner
             </Text>
             <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>
-              Tap any channel (0–15) to gently wiggle it back and forth around 300 PWM. Once you see which physical body part moves, click "Assign to {currentMeta.label}".
+              Click "⚡ Auto-Detect Active Channels" to probe all 16 channels using Gigi’s Torso camera (Torso pan produces the largest motion, followed by Neck, Shoulders, and Elbows), or tap any channel (0–15) to wiggle and assign it manually.
             </Text>
+
+            {channelScanResult && !isScanningChannels && (
+              <View
+                style={{
+                  backgroundColor: '#ECFDF5',
+                  borderWidth: 1,
+                  borderColor: '#6EE7B7',
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 12,
+                  gap: 6,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <View style={{ flex: 1, minWidth: 200 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#065F46' }}>
+                      🟢 Auto-Detected {channelScanResult.active_channels.length} Active Channels:{' '}
+                      {channelScanResult.active_channels.length > 0
+                        ? channelScanResult.active_channels.map((c) => `CH ${c}`).join(', ')
+                        : 'None'}
+                    </Text>
+                    {Object.keys(channelScanResult.suggested_assignments || {}).length > 0 && (
+                      <Text style={{ fontSize: 11, color: '#047857', marginTop: 2 }}>
+                        Suggested by Torso camera pan magnitude:{' '}
+                        {Object.entries(channelScanResult.suggested_assignments)
+                          .map(([j, c]) => `${j} → CH ${c}`)
+                          .join(' • ')}
+                      </Text>
+                    )}
+                  </View>
+                  {Object.keys(channelScanResult.suggested_assignments || {}).length > 0 && (
+                    <TouchableOpacity
+                      onPress={handleApplySuggestedChannels}
+                      style={{
+                        backgroundColor: '#059669',
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>
+                        ✨ Apply Suggested Channels (Editable)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {ALL_CHANNELS.map((ch) => {
                 const isSelectedProbe = probeChannel === ch;
                 const assignedTo = channelOwners[ch]?.join(', ');
+                const scanInfo = channelScanResult?.channels?.find((r) => r.channel === ch);
+                const isDetectedActive = Boolean(scanInfo?.active);
                 return (
                   <TouchableOpacity
                     key={ch}
+                    disabled={isScanningChannels}
                     onPress={() => {
                       setProbeChannel(ch);
                       onWiggleChannel(ch, 300);
@@ -567,18 +682,42 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
                       paddingVertical: 8,
                       borderRadius: 8,
                       borderWidth: 1.5,
-                      borderColor: isSelectedProbe ? '#5E43F3' : assignedTo ? '#93C5FD' : '#CBD5E1',
-                      backgroundColor: isSelectedProbe ? '#EDE9FE' : assignedTo ? '#EFF6FF' : '#FFFFFF',
-                      minWidth: 68,
+                      borderColor: isSelectedProbe
+                        ? '#5E43F3'
+                        : isDetectedActive
+                        ? '#10B981'
+                        : assignedTo
+                        ? '#93C5FD'
+                        : '#CBD5E1',
+                      backgroundColor: isSelectedProbe
+                        ? '#EDE9FE'
+                        : isDetectedActive
+                        ? '#ECFDF5'
+                        : assignedTo
+                        ? '#EFF6FF'
+                        : '#FFFFFF',
+                      minWidth: 74,
                       alignItems: 'center',
                     }}
                     activeOpacity={0.75}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: isSelectedProbe ? '#5E43F3' : '#1E293B' }}>
-                      CH {ch}
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '800',
+                        color: isSelectedProbe ? '#5E43F3' : isDetectedActive ? '#065F46' : '#1E293B',
+                      }}
+                    >
+                      CH {ch} {isDetectedActive ? '🟢' : ''}
                     </Text>
                     <Text style={{ fontSize: 9, color: '#64748B', marginTop: 2 }} numberOfLines={1}>
-                      {assignedTo ? assignedTo.split(' ')[0] : 'Unused'}
+                      {assignedTo
+                        ? assignedTo.split(' ')[0]
+                        : isDetectedActive
+                        ? `Active (${scanInfo?.mean_diff ?? ''}Δ)`
+                        : scanInfo
+                        ? 'Empty'
+                        : 'Unused'}
                     </Text>
                   </TouchableOpacity>
                 );

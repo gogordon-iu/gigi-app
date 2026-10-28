@@ -68,6 +68,24 @@ export interface CalibrationStatusInfo {
   calibrated_at?: string | null;
 }
 
+export interface ChannelScanRecord {
+  channel: number;
+  active: boolean;
+  max_diff: number;
+  mean_diff: number;
+  dx: number;
+  dy: number;
+  score: number;
+  suggested_joint?: MotorJointName | null;
+}
+
+export interface ChannelScanResult {
+  active_channels: number[];
+  channels: ChannelScanRecord[];
+  suggested_assignments: Partial<Record<MotorJointName, number>>;
+  message?: string;
+}
+
 export type TransportMode = 'serial' | 'bluetooth' | 'websocket';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

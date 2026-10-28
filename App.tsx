@@ -35,6 +35,7 @@ import {
   MotorJointName,
   MotorCalibrationMap,
   CalibrationStatusInfo,
+  ChannelScanResult,
 } from './src/types';
 import { STRATEGY_CATALOG_STR } from './src/constants/strategies';
 import { getActivityMetadata } from './src/constants/activities';
@@ -548,6 +549,9 @@ function AppContent({
   const [isSavingCalibration, setIsSavingCalibration] = useState<boolean>(false);
   const [isTestingGesture, setIsTestingGesture] = useState<boolean>(false);
   const [activeGestureName, setActiveGestureName] = useState<string | null>(null);
+  const [isScanningChannels, setIsScanningChannels] = useState<boolean>(false);
+  const [scanProgressChannel, setScanProgressChannel] = useState<number | null>(null);
+  const [channelScanResult, setChannelScanResult] = useState<ChannelScanResult | null>(null);
 
   const activeConnection = useRef<{ send: (data: string) => Promise<void>; disconnect: () => void } | null>(null);
   const dataBuffer = useRef<string>('');
@@ -688,9 +692,38 @@ function AppContent({
       );
     } else if (msg.status === 'calib_wiggled') {
       addLog(msg.message || `Wiggled servo channel ${msg.channel}.`, 'info');
+    } else if (msg.status === 'calib_scan_started') {
+      setIsScanningChannels(true);
+      setScanProgressChannel(0);
+      setChannelScanResult(null);
+      addLog(msg.message || 'Scanning 16 PCA9685 channels via Torso camera...', 'info');
+    } else if (msg.status === 'calib_scan_progress') {
+      setIsScanningChannels(true);
+      if (typeof msg.channel === 'number') {
+        setScanProgressChannel(msg.channel);
+      }
+    } else if (msg.status === 'calib_scan_completed') {
+      setIsScanningChannels(false);
+      setScanProgressChannel(null);
+      const scanRes: ChannelScanResult = {
+        active_channels: Array.isArray(msg.active_channels) ? msg.active_channels : [],
+        channels: Array.isArray(msg.channels) ? msg.channels : [],
+        suggested_assignments:
+          msg.suggested_assignments && typeof msg.suggested_assignments === 'object'
+            ? msg.suggested_assignments
+            : {},
+        message: msg.message,
+      };
+      setChannelScanResult(scanRes);
+      addLog(
+        msg.message || `Auto-detected active channels: ${scanRes.active_channels.join(', ')}`,
+        'success'
+      );
     } else if (msg.status === 'calib_released') {
       setIsTestingGesture(false);
       setActiveGestureName(null);
+      setIsScanningChannels(false);
+      setScanProgressChannel(null);
       addLog(msg.message || 'All motor PWM channels released.', 'info');
     } else if (msg.status === 'calib_homed') {
       addLog(msg.message || 'All motors moved to center home pose.', 'success');
@@ -1040,6 +1073,10 @@ function AppContent({
         Alert.alert('Success', `Plan saved successfully on robot as:\n${msg.folder}`);
       }
     } else if (msg.status === 'error') {
+      setIsScanningChannels(false);
+      setScanProgressChannel(null);
+      setIsTestingGesture(false);
+      setIsSavingCalibration(false);
       addLog(`Error: ${msg.message || msg.error}`, 'error');
       setIsLoadingScripts(false);
       setIsSavingPlan(false);
@@ -1366,6 +1403,13 @@ function AppContent({
 
   const handleWiggleChannel = (channel: number, basePwm: number = 300) => {
     sendJsonCommand({ command: 'calib_wiggle', channel, pwm: basePwm, delta: 20 });
+  };
+
+  const handleScanChannels = () => {
+    setIsScanningChannels(true);
+    setScanProgressChannel(0);
+    setChannelScanResult(null);
+    sendJsonCommand({ command: 'calib_scan' });
   };
 
   const handleHomeMotors = (customMotors?: MotorCalibrationMap) => {
@@ -2230,9 +2274,13 @@ Conform strictly to JSON state machine specification:
           isSavingCalibration={isSavingCalibration}
           isTestingGesture={isTestingGesture}
           activeGestureName={activeGestureName}
+          isScanningChannels={isScanningChannels}
+          scanProgressChannel={scanProgressChannel}
+          channelScanResult={channelScanResult}
           onFetchCalibration={handleFetchCalibration}
           onMoveChannelPwm={handleMoveChannelPwm}
           onWiggleChannel={handleWiggleChannel}
+          onScanChannels={handleScanChannels}
           onHomeMotors={handleHomeMotors}
           onReleaseMotors={handleReleaseMotors}
           onTestGesture={handleTestGesture}
