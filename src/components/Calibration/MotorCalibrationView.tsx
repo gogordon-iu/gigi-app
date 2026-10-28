@@ -235,6 +235,7 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
           next[jKey] = {
             ...existing,
             channel: suggestedCh,
+            calibrated: true,
           };
         }
       });
@@ -251,10 +252,10 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
       const rightEl = prev.right_elbow || DEFAULT_MOTOR_CALIBRATION_MAP.right_elbow;
       return {
         ...prev,
-        left_shoulder: { ...leftSh, channel: rightSh.channel },
-        right_shoulder: { ...rightSh, channel: leftSh.channel },
-        left_elbow: { ...leftEl, channel: rightEl.channel },
-        right_elbow: { ...rightEl, channel: leftEl.channel },
+        left_shoulder: { ...leftSh, channel: rightSh.channel, calibrated: true },
+        right_shoulder: { ...rightSh, channel: leftSh.channel, calibrated: true },
+        left_elbow: { ...leftEl, channel: rightEl.channel, calibrated: true },
+        right_elbow: { ...rightEl, channel: leftEl.channel, calibrated: true },
       };
     });
   };
@@ -338,7 +339,7 @@ export const MotorCalibrationView: React.FC<MotorCalibrationViewProps> = ({
       nextMap[meta.key] = {
         ...existing,
         ...normalized,
-        calibrated: Boolean(existing.calibrated && !isDummy),
+        calibrated: !isDummy,
         direction: existing.direction || meta.defaultDirection,
       };
     });
